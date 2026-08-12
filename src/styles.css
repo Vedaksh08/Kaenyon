@@ -1,0 +1,139 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* StudyAll brand tokens */
+  --color-navy: var(--navy);
+  --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-pro: var(--pro);
+  --color-pro-foreground: var(--pro-foreground);
+  --color-free: var(--free);
+  --color-free-foreground: var(--free-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-room: var(--room);
+  --color-room-card: var(--room-card);
+
+  --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.08);
+  --shadow-elevated: 0 8px 24px rgba(30, 58, 138, 0.18);
+}
+
+:root {
+  --radius: 12px;
+
+  /* StudyAll palette (light) */
+  --background: oklch(0.974 0.008 247); /* #F0F4F8 */
+  --foreground: oklch(0.21 0.05 264);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.21 0.05 264);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.21 0.05 264);
+
+  --navy: oklch(0.34 0.14 264); /* #1E3A8A */
+  --brand: oklch(0.62 0.19 256); /* #3B82F6 */
+  --brand-foreground: oklch(1 0 0);
+
+  --primary: var(--brand);
+  --primary-foreground: oklch(1 0 0);
+
+  --secondary: oklch(0.96 0.01 247);
+  --secondary-foreground: oklch(0.21 0.05 264);
+  --muted: oklch(0.95 0.01 247);
+  --muted-foreground: oklch(0.5 0.02 257); /* #6B7280-ish */
+  --accent: oklch(0.96 0.01 247);
+  --accent-foreground: oklch(0.21 0.05 264);
+
+  --pro: oklch(0.55 0.24 295); /* #7C3AED */
+  --pro-foreground: oklch(1 0 0);
+  --free: oklch(0.5 0.02 257); /* #6B7280 */
+  --free-foreground: oklch(1 0 0);
+
+  --success: oklch(0.7 0.16 160); /* #10B981 */
+  --warning: oklch(0.78 0.16 70); /* #F59E0B */
+  --danger: oklch(0.63 0.24 27); /* #EF4444 */
+  --destructive: var(--danger);
+  --destructive-foreground: oklch(1 0 0);
+
+  --room: oklch(0.16 0.02 264); /* #0D1117 */
+  --room-card: oklch(0.22 0.02 264);
+
+  --border: oklch(0.9 0.01 255);
+  --input: oklch(0.9 0.01 255);
+  --ring: var(--brand);
+
+  --sidebar: oklch(0.16 0.02 264);
+  --sidebar-foreground: oklch(1 0 0);
+  --sidebar-primary: var(--brand);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: oklch(0.22 0.02 264);
+  --sidebar-accent-foreground: oklch(1 0 0);
+  --sidebar-border: oklch(1 0 0 / 8%);
+  --sidebar-ring: var(--brand);
+}
+
+.dark {
+  --background: var(--room);
+  --foreground: oklch(0.98 0 0);
+  --card: var(--room-card);
+  --card-foreground: oklch(0.98 0 0);
+  --popover: var(--room-card);
+  --popover-foreground: oklch(0.98 0 0);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--background);
+  color: var(--foreground);
+  -webkit-font-smoothing: antialiased;
+}
+
+@utility shadow-card {
+  box-shadow: var(--shadow-card);
+}
+
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+.animate-marquee {
+  animation: marquee 40s linear infinite;
+}
