@@ -17,12 +17,12 @@ fresh one.
 
 **Project Settings → API:**
 
-| Value | Goes into |
-|---|---|
-| Project URL | `SUPABASE_URL` and `VITE_SUPABASE_URL` |
-| Project ID (the ref in the URL) | `SUPABASE_PROJECT_ID` and `VITE_SUPABASE_PROJECT_ID` |
-| `anon` / publishable key | `SUPABASE_PUBLISHABLE_KEY` and `VITE_SUPABASE_PUBLISHABLE_KEY` |
-| `service_role` key | `SUPABASE_SERVICE_ROLE_KEY` — **secret** |
+| Value                           | Goes into                                                      |
+| ------------------------------- | -------------------------------------------------------------- |
+| Project URL                     | `SUPABASE_URL` and `VITE_SUPABASE_URL`                         |
+| Project ID (the ref in the URL) | `SUPABASE_PROJECT_ID` and `VITE_SUPABASE_PROJECT_ID`           |
+| `anon` / publishable key        | `SUPABASE_PUBLISHABLE_KEY` and `VITE_SUPABASE_PUBLISHABLE_KEY` |
+| `service_role` key              | `SUPABASE_SERVICE_ROLE_KEY` — **secret**                       |
 
 The `anon` key is safe in the browser; row-level security is what protects the
 data. The `service_role` key bypasses RLS entirely — it must never get a `VITE_`
@@ -116,7 +116,7 @@ Still present, deliberately:
 
 ## Notes for whoever is editing
 
-- Files marked *"automatically generated — do not edit"* under
+- Files marked _"automatically generated — do not edit"_ under
   `src/integrations/` come from Lovable's tooling. Prefer changing config or
   environment over editing them; they can be regenerated.
 - `npm run lint` must stay at zero errors. Run `npm run format` before pushing.

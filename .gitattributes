@@ -1,0 +1,16 @@
+# Normalise line endings so Windows and macOS/Linux checkouts agree.
+# Without this, a Windows checkout rewrites files as CRLF and Prettier flags
+# every line in the repo as an error.
+* text=auto eol=lf
+
+# Binary / generated files git should not touch.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+bun.lock linguist-generated=true
+package-lock.json linguist-generated=true
+src/routeTree.gen.ts linguist-generated=true
