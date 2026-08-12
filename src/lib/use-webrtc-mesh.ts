@@ -17,6 +17,8 @@ type Peer = {
   pc: RTCPeerConnection;
   videoSender: RTCRtpSender;
   audioSender: RTCRtpSender;
+  videoTransceiver: RTCRtpTransceiver;
+  audioTransceiver: RTCRtpTransceiver;
   polite: boolean;
   makingOffer: boolean;
   stream: MediaStream;
@@ -47,6 +49,7 @@ export function useWebrtcMesh(opts: {
   const helloRef = useRef<() => void>(() => {});
   const subscribedRef = useRef(false);
   const peerIdsRef = useRef<string[]>([]);
+  const negotiateRef = useRef<(peerId: string) => void>(() => {});
 
   localStreamRef.current = localStream;
 
@@ -97,6 +100,8 @@ export function useWebrtcMesh(opts: {
         pc,
         videoSender: videoTx.sender,
         audioSender: audioTx.sender,
+        videoTransceiver: videoTx,
+        audioTransceiver: audioTx,
         polite: userId > peerId,
         makingOffer: false,
         stream,
@@ -272,6 +277,8 @@ export function useWebrtcMesh(opts: {
         }
       });
 
+    negotiateRef.current = (peerId: string) => void negotiate(peerId);
+
     helloRef.current = () => {
       if (!subscribedRef.current) return;
       channelRef.current?.send({ type: "broadcast", event: "hello", payload: { from: userId } });
@@ -313,15 +320,44 @@ export function useWebrtcMesh(opts: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [peerIds.join(","), userId]);
 
-  // Swap our camera/mic tracks onto every peer without renegotiating.
+  // Swap our camera/mic tracks onto every peer.
+  //
+  // Joining with the camera off creates the transceivers from the *string*
+  // kind, so they carry no track and the browser may settle them on a
+  // recvonly/inactive direction. replaceTrack alone then puts a live track on a
+  // sender the remote side was never told to expect, and the far end renders a
+  // black tile forever. Pin the direction back to sendrecv and re-offer
+  // whenever the track identity changes.
   useEffect(() => {
     const video = localStream?.getVideoTracks()[0] ?? null;
     const audio = localStream?.getAudioTracks()[0] ?? null;
-    peersRef.current.forEach((peer) => {
-      if (peer.videoSender.track !== video)
+
+    peersRef.current.forEach((peer, peerId) => {
+      let changed = false;
+
+      if (peer.videoSender.track !== video) {
         void peer.videoSender.replaceTrack(video).catch(() => {});
-      if (peer.audioSender.track !== audio)
+        changed = true;
+      }
+      if (peer.audioSender.track !== audio) {
         void peer.audioSender.replaceTrack(audio).catch(() => {});
+        changed = true;
+      }
+
+      for (const tx of [peer.videoTransceiver, peer.audioTransceiver]) {
+        if (tx.direction !== "sendrecv") {
+          try {
+            tx.direction = "sendrecv";
+            changed = true;
+          } catch {
+            /* transceiver already stopped */
+          }
+        }
+      }
+
+      // Only the designated offerer re-offers; the other side picks the change
+      // up from the offer it receives.
+      if (changed && peer.pc.signalingState === "stable") negotiateRef.current(peerId);
     });
   }, [localStream]);
 

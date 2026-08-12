@@ -44,12 +44,12 @@ import { ThemeToggle } from "@/components/theme-toggle";
 export const Route = createFileRoute("/_authenticated/home")({
   head: () => ({
     meta: [
-      { title: "Your Subjects — StudyAll" },
+      { title: "Your Subjects — Kaenyon" },
       {
         name: "description",
         content: "Pick a subject and jump into a live classroom to ask or solve doubts.",
       },
-      { property: "og:title", content: "Your Subjects — StudyAll" },
+      { property: "og:title", content: "Your Subjects — Kaenyon" },
       {
         property: "og:description",
         content: "Pick a subject and jump into a live classroom to ask or solve doubts.",

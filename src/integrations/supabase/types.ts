@@ -232,9 +232,11 @@ export type Database = {
           college: string;
           course: string;
           created_at: string;
+          dob: string | null;
           email: string;
           id: string;
           name: string;
+          onboarded_at: string | null;
           suspended_until: string | null;
           updated_at: string;
           year: string;
@@ -244,9 +246,11 @@ export type Database = {
           college?: string;
           course?: string;
           created_at?: string;
+          dob?: string | null;
           email?: string;
           id: string;
           name?: string;
+          onboarded_at?: string | null;
           suspended_until?: string | null;
           updated_at?: string;
           year?: string;
@@ -256,9 +260,11 @@ export type Database = {
           college?: string;
           course?: string;
           created_at?: string;
+          dob?: string | null;
           email?: string;
           id?: string;
           name?: string;
+          onboarded_at?: string | null;
           suspended_until?: string | null;
           updated_at?: string;
           year?: string;
@@ -478,6 +484,26 @@ export type Database = {
           id: string;
           name: string;
           year: string;
+        }[];
+      };
+      get_public_profiles: {
+        Args: { _user_ids: string[] };
+        Returns: {
+          avatar_url: string;
+          college: string;
+          course: string;
+          id: string;
+          name: string;
+          year: string;
+        }[];
+      };
+      get_suspended_profiles: {
+        Args: { _limit?: number };
+        Returns: {
+          email: string;
+          id: string;
+          name: string;
+          suspended_until: string;
         }[];
       };
       has_role: {

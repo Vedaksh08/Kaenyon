@@ -4,15 +4,15 @@ import { AlertTriangle } from "lucide-react";
 export const Route = createFileRoute("/suspended")({
   head: () => ({
     meta: [
-      { title: "Account Suspended — StudyAll" },
+      { title: "Account Suspended — Kaenyon" },
       {
         name: "description",
-        content: "Your StudyAll account is temporarily suspended after moderation review.",
+        content: "Your Kaenyon account is temporarily suspended after moderation review.",
       },
-      { property: "og:title", content: "Account Suspended — StudyAll" },
+      { property: "og:title", content: "Account Suspended — Kaenyon" },
       {
         property: "og:description",
-        content: "Your StudyAll account is temporarily suspended after moderation review.",
+        content: "Your Kaenyon account is temporarily suspended after moderation review.",
       },
     ],
   }),

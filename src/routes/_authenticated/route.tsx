@@ -11,26 +11,17 @@ export const Route = createFileRoute("/_authenticated")({
     // Suspension check
     const { data: prof } = await supabase
       .from("profiles")
-      .select("suspended_until, name, college, course, year")
+      .select("suspended_until, onboarded_at")
       .eq("id", data.user.id)
       .maybeSingle();
     if (prof?.suspended_until && new Date(prof.suspended_until).getTime() > Date.now()) {
       throw redirect({ to: "/suspended" });
     }
 
-    // First sign-in after email verification: copy signup details onto the profile
-    const meta = (data.user.user_metadata ?? {}) as Record<string, string | undefined>;
-    if (prof && !prof.college && (meta.college || meta.name)) {
-      await supabase
-        .from("profiles")
-        .update({
-          name: prof.name || meta.name || undefined,
-          college: meta.college || undefined,
-          course: meta.course || undefined,
-          year: meta.year || undefined,
-          email: data.user.email ?? undefined,
-        })
-        .eq("id", data.user.id);
+    // Sign-up collects nothing but an email, so details are gathered on first
+    // sign-in instead. Everything behind this guard assumes a real name exists.
+    if (!prof?.onboarded_at) {
+      throw redirect({ to: "/onboarding" });
     }
 
     return { user: data.user };

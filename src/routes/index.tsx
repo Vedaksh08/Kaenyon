@@ -4,7 +4,7 @@ import { MessageCircle } from "lucide-react";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "StudyAll — Be Limitless" },
+      { title: "Kaenyon — Be Limitless" },
       {
         name: "description",
         content: "The global peer-to-peer learning platform for college students.",
@@ -25,7 +25,7 @@ function Landing() {
 
       <div className="w-full max-w-md rounded-2xl bg-card shadow-card p-10 text-center">
         <div className="inline-block border-[3px] border-double border-navy px-6 py-3">
-          <div className="text-3xl font-extrabold tracking-tight text-navy">STUDYALL</div>
+          <div className="text-3xl font-extrabold tracking-tight text-navy">KAENYON</div>
         </div>
         <div className="mt-3 flex items-center justify-center gap-3 text-[10px] uppercase tracking-[0.3em] text-muted-foreground">
           <span className="h-px w-10 bg-border" />

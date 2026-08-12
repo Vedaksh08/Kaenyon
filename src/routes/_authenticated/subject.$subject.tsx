@@ -7,15 +7,15 @@ import { ensureOpenClassrooms } from "@/lib/classrooms.functions";
 export const Route = createFileRoute("/_authenticated/subject/$subject")({
   head: ({ params }) => ({
     meta: [
-      { title: `${prettify(params.subject)} — StudyAll` },
+      { title: `${prettify(params.subject)} — Kaenyon` },
       {
         name: "description",
-        content: `Join a live ${prettify(params.subject)} classroom on StudyAll and get your doubts solved by peers.`,
+        content: `Join a live ${prettify(params.subject)} classroom on Kaenyon and get your doubts solved by peers.`,
       },
-      { property: "og:title", content: `${prettify(params.subject)} — StudyAll` },
+      { property: "og:title", content: `${prettify(params.subject)} — Kaenyon` },
       {
         property: "og:description",
-        content: `Live ${prettify(params.subject)} classrooms on StudyAll.`,
+        content: `Live ${prettify(params.subject)} classrooms on Kaenyon.`,
       },
     ],
   }),

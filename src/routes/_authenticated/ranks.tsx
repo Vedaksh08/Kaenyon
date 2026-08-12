@@ -8,13 +8,13 @@ import { fetchLeaderboard, fetchMyStats, type LeaderRow, type MyStats } from "@/
 export const Route = createFileRoute("/_authenticated/ranks")({
   head: () => ({
     meta: [
-      { title: "Global Rankings — StudyAll" },
+      { title: "Global Rankings — Kaenyon" },
       {
         name: "description",
-        content: "Live StudyAll leaderboard — doubts solved and average session ratings out of 10.",
+        content: "Live Kaenyon leaderboard — doubts solved and average session ratings out of 10.",
       },
-      { property: "og:title", content: "Global Rankings — StudyAll" },
-      { property: "og:description", content: "See who solves the most doubts on StudyAll." },
+      { property: "og:title", content: "Global Rankings — Kaenyon" },
+      { property: "og:description", content: "See who solves the most doubts on Kaenyon." },
     ],
   }),
   component: Ranks,

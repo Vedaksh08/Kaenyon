@@ -2,7 +2,10 @@
 @source "../src";
 @import "tw-animate-css";
 
-@custom-variant dark (&:is(.dark *));
+/* `.dark` is set on <html> itself, so the variant has to match that element as
+ * well as its descendants — `&:is(.dark *)` alone skips anything styled on
+ * html/body and leaves dark mode half-applied. */
+@custom-variant dark (&:where(.dark, .dark *));
 
 @theme inline {
   --radius-sm: 6px;

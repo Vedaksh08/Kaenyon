@@ -79,13 +79,13 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "StudyAll — Be Limitless" },
+      { title: "Kaenyon — Be Limitless" },
       {
         name: "description",
         content:
           "Peer-to-peer doubt solving for college students. Join silent classrooms, solve doubts, climb the ranks.",
       },
-      { property: "og:title", content: "StudyAll — Be Limitless" },
+      { property: "og:title", content: "Kaenyon — Be Limitless" },
       { property: "og:description", content: "Peer-to-peer doubt solving for college students." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
@@ -111,6 +111,13 @@ function RootShell({ children }: { children: ReactNode }) {
     <html lang="en">
       <head>
         <HeadContent />
+        {/* Applies the saved theme before first paint. Without it the page
+         * renders light, then flips to dark once React hydrates. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{if(localStorage.getItem("studyall.theme")==="dark")document.documentElement.classList.add("dark")}catch(e){}`,
+          }}
+        />
       </head>
       <body>
         {children}

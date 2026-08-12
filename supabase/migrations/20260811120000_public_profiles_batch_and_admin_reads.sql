@@ -8,12 +8,15 @@
 -- get_public_profile(uuid) already solves this for a single user. These add the
 -- batch equivalent, plus the moderator-only view the admin screen needs.
 
--- Batch version of get_public_profile: name/avatar only, never email or
--- suspension state. Used for chat authors, room rosters, admin name maps.
+-- Batch version of get_public_profile, matching its column list. Never exposes
+-- email or suspension state. Used for chat authors, room rosters, admin name
+-- maps.
+DROP FUNCTION IF EXISTS public.get_public_profiles(uuid[]);
+
 CREATE OR REPLACE FUNCTION public.get_public_profiles(_user_ids uuid[])
-RETURNS TABLE (id uuid, name text, avatar_url text)
+RETURNS TABLE (id uuid, name text, avatar_url text, college text, course text, year text)
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
-  SELECT p.id, p.name, p.avatar_url
+  SELECT p.id, p.name, p.avatar_url, p.college, p.course, p.year
   FROM public.profiles p
   WHERE p.id = ANY(_user_ids)
   LIMIT 500;

@@ -39,13 +39,13 @@ function RemoteVideo({ stream }: { stream: MediaStream }) {
 export const Route = createFileRoute("/_authenticated/room/$roomId")({
   head: () => ({
     meta: [
-      { title: "Study Room — StudyAll" },
+      { title: "Study Room — Kaenyon" },
       {
         name: "description",
         content:
-          "A live StudyAll classroom: ask doubts, offer help and run private solving sessions.",
+          "A live Kaenyon classroom: ask doubts, offer help and run private solving sessions.",
       },
-      { property: "og:title", content: "Study Room — StudyAll" },
+      { property: "og:title", content: "Study Room — Kaenyon" },
       { property: "og:description", content: "Live peer-to-peer doubt solving classroom." },
     ],
   }),
@@ -109,7 +109,6 @@ function Room() {
   const [cam, setCam] = useState(false);
   const [mic, setMic] = useState(false);
   const [chatOpen, setChatOpen] = useState(true);
-  const [tab, setTab] = useState<"peer" | "requests">("peer");
   const [doubts, setDoubts] = useState<Doubt[]>([]);
   const [draft, setDraft] = useState("");
   const [privateSession, setPrivateSession] = useState(false);
@@ -117,6 +116,10 @@ function Room() {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [rating, setRating] = useState(false);
   const [ratingFor, setRatingFor] = useState<string | null>(null);
+  // Only the person who raised the doubt rates, and only the helper gets rated.
+  // Set when a private session starts; null for the helper, so leaving the
+  // session never prompts them.
+  const [pendingRatee, setPendingRatee] = useState<string | null>(null);
 
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [reportFor, setReportFor] = useState<{ name: string; target: "user" | "doubt" } | null>(
@@ -485,9 +488,12 @@ function Room() {
       const ids = Array.from(new Set(rows.map((r) => r.author_id)));
       const nameMap: Record<string, string> = {};
       if (ids.length) {
-        const { data: profs } = await supabase.from("profiles").select("id, name").in("id", ids);
+        // RLS restricts `profiles` SELECT to the owner, so querying the table
+        // directly returns nothing for other people and every name falls back
+        // to "Student". This RPC exposes just name/avatar for any user.
+        const { data: profs } = await supabase.rpc("get_public_profiles", { _user_ids: ids });
         (profs ?? []).forEach((p) => {
-          nameMap[p.id] = p.name || "Student";
+          if (p.name?.trim()) nameMap[p.id] = p.name.trim();
         });
       }
       setDoubts(
@@ -508,18 +514,17 @@ function Room() {
         { event: "INSERT", schema: "public", table: "doubts", filter: `classroom_id=eq.${roomId}` },
         async (payload) => {
           const row = payload.new as { id: string; body: string; author_id: string };
-          const { data: prof } = await supabase
-            .from("profiles")
-            .select("name")
-            .eq("id", row.author_id)
-            .maybeSingle();
+          const { data: prof } = await supabase.rpc("get_public_profile", {
+            _user_id: row.author_id,
+          });
+          const authorName = prof?.[0]?.name?.trim() || "Student";
           setDoubts((prev) =>
             prev.some((d) => d.id === row.id)
               ? prev
               : [
                   {
                     id: row.id,
-                    user: prof?.name || "Student",
+                    user: authorName,
                     author_id: row.author_id,
                     status: "open",
                     text: row.body,
@@ -785,6 +790,9 @@ function Room() {
     });
     if (accepted) {
       setInvitedIds([invite.hostUserId]);
+      // The host offered help on our doubt, so they are the one we rate when
+      // the session ends.
+      setPendingRatee(invite.hostUserId);
       setPrivateSession(true);
     }
   };
@@ -799,9 +807,14 @@ function Room() {
         roomParticipants={remoteParticipants.filter((p) => !blocked.includes(p.userId ?? p.id))}
         onReturn={() => {
           setPrivateSession(false);
-          setRatingFor(invitedIds[0] ?? null);
           setInvitedIds([]);
-          setRating(true);
+          // Helpers have no pendingRatee, so they return to the room without
+          // being asked to rate the person they just helped.
+          if (pendingRatee) {
+            setRatingFor(pendingRatee);
+            setPendingRatee(null);
+            setRating(true);
+          }
         }}
         onInvite={(ids) => void sendInvites(ids)}
       />
@@ -1001,22 +1014,13 @@ function Room() {
         {/* Interaction Center */}
         {chatOpen && (
           <aside className="w-full shrink-0 border-t border-white/10 bg-room-card/40 p-4 md:w-80 md:border-l md:border-t-0">
-            <div className="flex items-center gap-2 text-sm font-bold">
-              <span className="text-primary">✦</span> Interaction Center
-            </div>
-            <div className="mt-3 flex rounded-lg bg-room p-1 text-xs font-semibold">
-              <button
-                onClick={() => setTab("peer")}
-                className={`flex-1 rounded-md py-1.5 ${tab === "peer" ? "bg-primary text-primary-foreground" : "text-white/60"}`}
-              >
-                Peer Help
-              </button>
-              <button
-                onClick={() => setTab("requests")}
-                className={`flex-1 rounded-md py-1.5 ${tab === "requests" ? "bg-primary text-primary-foreground" : "text-white/60"}`}
-              >
-                Requests <span className="ml-1 rounded-full bg-danger px-1.5 text-[10px]">3</span>
-              </button>
+            <div className="flex items-center justify-between">
+              <div className="text-sm font-bold">Doubts</div>
+              {visibleDoubts.length > 0 && (
+                <span className="rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-semibold text-white/70">
+                  {visibleDoubts.length}
+                </span>
+              )}
             </div>
 
             <div className="mt-3 max-h-[calc(100vh-340px)] space-y-3 overflow-y-auto pr-1">

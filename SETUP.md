@@ -89,16 +89,63 @@ npm run dev
 
 ## Deploying to Vercel
 
-`npm run build` writes `.vercel/output/` (Build Output API v3). Import the repo
-at <https://vercel.com/new> and add the same variables from `.env` under
-**Settings → Environment Variables** — Vercel does not read `.env` files.
+Run the migrations (step 4) **before** deploying. Without them the site builds
+and serves fine but every page is empty, which looks like a broken deploy.
 
-Set `VITE_*` for all environments. Keep `SUPABASE_SERVICE_ROLE_KEY` marked
-**Sensitive**.
+### 1. Import the repo
 
-After the first deploy, add the live URL to Supabase → Authentication → URL
-Configuration (Site URL, plus `https://<domain>/auth/callback` as a redirect),
-or sign-in links will keep pointing at localhost.
+<https://vercel.com/new> → import the GitHub repo.
+
+Leave the framework preset as **Other**. `vercel.json` already sets the build
+command and output directory; do not override them. There is no "root
+directory" to change — the app is at the repo root.
+
+### 2. Environment variables — do this BEFORE the first deploy
+
+**Settings → Environment Variables.** Vercel never reads `.env` files, so a
+deploy without these fails at build time with "Missing Supabase environment
+variable(s)".
+
+Add all seven, ticking **Production**, **Preview** and **Development** for each:
+
+| Variable                        | Notes                                    |
+| ------------------------------- | ---------------------------------------- |
+| `SUPABASE_URL`                  |                                          |
+| `SUPABASE_PROJECT_ID`           |                                          |
+| `SUPABASE_PUBLISHABLE_KEY`      |                                          |
+| `VITE_SUPABASE_URL`             | same value as `SUPABASE_URL`             |
+| `VITE_SUPABASE_PROJECT_ID`      | same value as `SUPABASE_PROJECT_ID`      |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | same value as `SUPABASE_PUBLISHABLE_KEY` |
+| `SUPABASE_SERVICE_ROLE_KEY`     | mark **Sensitive**. No `VITE_` prefix.   |
+
+The `VITE_` copies are not redundant — those are the ones compiled into the
+browser bundle. The unprefixed ones are read by the server at runtime.
+
+Changing an env var later does **not** rebuild the site. Redeploy from the
+Deployments tab afterwards.
+
+### 3. Point Supabase at the deployed URL
+
+**Authentication → URL Configuration:**
+
+- Site URL: `https://<your-domain>.vercel.app`
+- Redirect URLs: add `https://<your-domain>.vercel.app/auth/callback`, and keep
+  `http://localhost:8080/auth/callback` for local work
+
+Skip this and sign-in emails keep pointing at localhost — login appears broken
+for everyone but the person running it locally.
+
+Vercel gives every deploy its own preview URL. Those will not work for OAuth
+unless added here too; test auth on the production domain.
+
+### 4. Verify
+
+- The site loads and subject pages list classrooms (proves migrations ran)
+- Sign up with a real email, confirm the link, and check a row appears in
+  `profiles` in the Supabase Table Editor
+
+Node is pinned to >=22.12 in `package.json` (Vite 8 requires it); Vercel picks
+this up automatically.
 
 ## Notes on the Lovable migration
 

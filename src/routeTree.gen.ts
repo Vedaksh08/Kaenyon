@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as SuspendedRouteImport } from './routes/suspended'
 import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
@@ -19,6 +20,7 @@ import { Route as AuthenticatedExpertsRouteImport } from './routes/_authenticate
 import { Route as AuthenticatedHomeRouteImport } from './routes/_authenticated/home'
 import { Route as AuthenticatedProfileRouteImport } from './routes/_authenticated/profile'
 import { Route as AuthenticatedRanksRouteImport } from './routes/_authenticated/ranks'
+import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthCallbackRouteImport } from './routes/auth.callback'
 import { Route as AuthenticatedRoomRoomIdRouteImport } from './routes/_authenticated/room.$roomId'
 import { Route as AuthenticatedSubjectSubjectRouteImport } from './routes/_authenticated/subject.$subject'
@@ -36,6 +38,11 @@ const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OnboardingRoute = OnboardingRouteImport.update({
+  id: '/onboarding',
+  path: '/onboarding',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SignupRoute = SignupRouteImport.update({
@@ -73,6 +80,11 @@ const AuthenticatedRanksRoute = AuthenticatedRanksRouteImport.update({
   path: '/ranks',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthCallbackRoute = AuthCallbackRouteImport.update({
   id: '/auth/callback',
   path: '/auth/callback',
@@ -98,6 +110,7 @@ const AuthenticatedUUserIdRoute = AuthenticatedUUserIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/onboarding': typeof OnboardingRoute
   '/signup': typeof SignupRoute
   '/suspended': typeof SuspendedRoute
   '/admin': typeof AuthenticatedAdminRoute
@@ -105,6 +118,7 @@ export interface FileRoutesByFullPath {
   '/home': typeof AuthenticatedHomeRoute
   '/profile': typeof AuthenticatedProfileRoute
   '/ranks': typeof AuthenticatedRanksRoute
+  '/settings': typeof AuthenticatedSettingsRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/room/$roomId': typeof AuthenticatedRoomRoomIdRoute
   '/subject/$subject': typeof AuthenticatedSubjectSubjectRoute
@@ -113,6 +127,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/onboarding': typeof OnboardingRoute
   '/signup': typeof SignupRoute
   '/suspended': typeof SuspendedRoute
   '/admin': typeof AuthenticatedAdminRoute
@@ -120,6 +135,7 @@ export interface FileRoutesByTo {
   '/home': typeof AuthenticatedHomeRoute
   '/profile': typeof AuthenticatedProfileRoute
   '/ranks': typeof AuthenticatedRanksRoute
+  '/settings': typeof AuthenticatedSettingsRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/room/$roomId': typeof AuthenticatedRoomRoomIdRoute
   '/subject/$subject': typeof AuthenticatedSubjectSubjectRoute
@@ -130,6 +146,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/login': typeof LoginRoute
+  '/onboarding': typeof OnboardingRoute
   '/signup': typeof SignupRoute
   '/suspended': typeof SuspendedRoute
   '/_authenticated/admin': typeof AuthenticatedAdminRoute
@@ -137,6 +154,7 @@ export interface FileRoutesById {
   '/_authenticated/home': typeof AuthenticatedHomeRoute
   '/_authenticated/profile': typeof AuthenticatedProfileRoute
   '/_authenticated/ranks': typeof AuthenticatedRanksRoute
+  '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/_authenticated/room/$roomId': typeof AuthenticatedRoomRoomIdRoute
   '/_authenticated/subject/$subject': typeof AuthenticatedSubjectSubjectRoute
@@ -147,6 +165,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/login'
+    | '/onboarding'
     | '/signup'
     | '/suspended'
     | '/admin'
@@ -154,6 +173,7 @@ export interface FileRouteTypes {
     | '/home'
     | '/profile'
     | '/ranks'
+    | '/settings'
     | '/auth/callback'
     | '/room/$roomId'
     | '/subject/$subject'
@@ -162,6 +182,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/login'
+    | '/onboarding'
     | '/signup'
     | '/suspended'
     | '/admin'
@@ -169,6 +190,7 @@ export interface FileRouteTypes {
     | '/home'
     | '/profile'
     | '/ranks'
+    | '/settings'
     | '/auth/callback'
     | '/room/$roomId'
     | '/subject/$subject'
@@ -178,6 +200,7 @@ export interface FileRouteTypes {
     | '/'
     | '/_authenticated'
     | '/login'
+    | '/onboarding'
     | '/signup'
     | '/suspended'
     | '/_authenticated/admin'
@@ -185,6 +208,7 @@ export interface FileRouteTypes {
     | '/_authenticated/home'
     | '/_authenticated/profile'
     | '/_authenticated/ranks'
+    | '/_authenticated/settings'
     | '/auth/callback'
     | '/_authenticated/room/$roomId'
     | '/_authenticated/subject/$subject'
@@ -195,6 +219,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   LoginRoute: typeof LoginRoute
+  OnboardingRoute: typeof OnboardingRoute
   SignupRoute: typeof SignupRoute
   SuspendedRoute: typeof SuspendedRoute
   AuthCallbackRoute: typeof AuthCallbackRoute
@@ -221,6 +246,13 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/onboarding': {
+      id: '/onboarding'
+      path: '/onboarding'
+      fullPath: '/onboarding'
+      preLoaderRoute: typeof OnboardingRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/signup': {
@@ -272,6 +304,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedRanksRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/settings': {
+      id: '/_authenticated/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof AuthenticatedSettingsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/auth/callback': {
       id: '/auth/callback'
       path: '/auth/callback'
@@ -309,6 +348,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedHomeRoute: typeof AuthenticatedHomeRoute
   AuthenticatedProfileRoute: typeof AuthenticatedProfileRoute
   AuthenticatedRanksRoute: typeof AuthenticatedRanksRoute
+  AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedRoomRoomIdRoute: typeof AuthenticatedRoomRoomIdRoute
   AuthenticatedSubjectSubjectRoute: typeof AuthenticatedSubjectSubjectRoute
   AuthenticatedUUserIdRoute: typeof AuthenticatedUUserIdRoute
@@ -320,6 +360,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedHomeRoute: AuthenticatedHomeRoute,
   AuthenticatedProfileRoute: AuthenticatedProfileRoute,
   AuthenticatedRanksRoute: AuthenticatedRanksRoute,
+  AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedRoomRoomIdRoute: AuthenticatedRoomRoomIdRoute,
   AuthenticatedSubjectSubjectRoute: AuthenticatedSubjectSubjectRoute,
   AuthenticatedUUserIdRoute: AuthenticatedUUserIdRoute,
@@ -332,6 +373,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   LoginRoute: LoginRoute,
+  OnboardingRoute: OnboardingRoute,
   SignupRoute: SignupRoute,
   SuspendedRoute: SuspendedRoute,
   AuthCallbackRoute: AuthCallbackRoute,

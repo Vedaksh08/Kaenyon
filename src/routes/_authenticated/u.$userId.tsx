@@ -8,15 +8,15 @@ import { sendFriendRequest, fetchMyStats, type MyStats } from "@/lib/social";
 export const Route = createFileRoute("/_authenticated/u/$userId")({
   head: () => ({
     meta: [
-      { title: "Student Profile — StudyAll" },
+      { title: "Student Profile — Kaenyon" },
       {
         name: "description",
-        content: "View a StudyAll student's college, course, doubts solved and average rating.",
+        content: "View a Kaenyon student's college, course, doubts solved and average rating.",
       },
-      { property: "og:title", content: "Student Profile — StudyAll" },
+      { property: "og:title", content: "Student Profile — Kaenyon" },
       {
         property: "og:description",
-        content: "View a StudyAll student's college, course, doubts solved and average rating.",
+        content: "View a Kaenyon student's college, course, doubts solved and average rating.",
       },
     ],
   }),
