@@ -728,10 +728,45 @@ function Room() {
 
     return () => {
       cancelled = true;
-      if (channel) supabase.removeChannel(channel);
+      if (channel) {
+        // untrack() before removeChannel: dropping the socket alone can leave
+        // us in everyone else's presence state until the server times the
+        // connection out, so people who left still appear in the grid.
+        void channel.untrack().then(() => supabase.removeChannel(channel!));
+      }
       presenceChannelRef.current = null;
     };
   }, [roomId]);
+
+  // Closing the tab or hitting back never runs React cleanup, so untrack here
+  // too — otherwise the room keeps showing people who are long gone.
+  useEffect(() => {
+    const leave = () => {
+      void presenceChannelRef.current?.untrack();
+      if (userId) {
+        void clearPresence(userId);
+        void withdrawMyDoubts(userId);
+      }
+    };
+    window.addEventListener("pagehide", leave);
+    return () => window.removeEventListener("pagehide", leave);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, roomId]);
+
+  // A doubt only makes sense while its author is in the room to be helped, so
+  // retract them on the way out rather than leaving the list full of questions
+  // nobody can answer.
+  const withdrawMyDoubts = async (uid: string) => {
+    await supabase.from("doubts").delete().eq("classroom_id", roomId).eq("author_id", uid);
+  };
+
+  useEffect(() => {
+    if (!userId) return;
+    return () => {
+      void withdrawMyDoubts(userId);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, roomId]);
 
   // Publish a database presence heartbeat so friends can see we're in this class.
   useEffect(() => {

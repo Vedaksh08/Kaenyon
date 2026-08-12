@@ -9,8 +9,34 @@ type SignalPayload = {
   candidate?: RTCIceCandidateInit;
 };
 
+// STUN alone only works when both peers can be reached directly. On mobile
+// data, university wifi, or any symmetric NAT the candidates never pair and the
+// tile stays black — a TURN relay is the only fix.
+//
+// These are openrelay's free public servers: fine for getting started, but they
+// are rate-limited and not something to launch on. Swap in a paid TURN provider
+// (Twilio, Cloudflare Calls, Metered) or self-hosted coturn before real use.
 const ICE_SERVERS: RTCConfiguration = {
-  iceServers: [{ urls: "stun:stun.l.google.com:19302" }, { urls: "stun:stun1.l.google.com:19302" }],
+  iceServers: [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" },
+    {
+      urls: "turn:openrelay.metered.ca:80",
+      username: "openrelayproject",
+      credential: "openrelayproject",
+    },
+    {
+      urls: "turn:openrelay.metered.ca:443",
+      username: "openrelayproject",
+      credential: "openrelayproject",
+    },
+    {
+      urls: "turn:openrelay.metered.ca:443?transport=tcp",
+      username: "openrelayproject",
+      credential: "openrelayproject",
+    },
+  ],
+  iceCandidatePoolSize: 4,
 };
 
 type Peer = {
@@ -50,6 +76,9 @@ export function useWebrtcMesh(opts: {
   const subscribedRef = useRef(false);
   const peerIdsRef = useRef<string[]>([]);
   const negotiateRef = useRef<(peerId: string) => void>(() => {});
+  // Peers heard over the RTC channel itself. Presence and this channel settle
+  // independently, so we cannot rely on peerIds alone to know who is here.
+  const knownPeersRef = useRef<Set<string>>(new Set());
 
   localStreamRef.current = localStream;
 
@@ -151,6 +180,9 @@ export function useWebrtcMesh(opts: {
       };
 
       pc.onconnectionstatechange = () => {
+        // Loud on purpose: this is the single most useful line when someone
+        // reports "I can't see my friend". Check it in the browser console.
+        console.info(`[rtc] ${peerId.slice(0, 8)} -> ${pc.connectionState}`);
         if (pc.connectionState === "failed") {
           try {
             pc.restartIce();
@@ -159,6 +191,16 @@ export function useWebrtcMesh(opts: {
           }
         }
         if (pc.connectionState === "closed") dropPeer(peerId);
+      };
+
+      pc.oniceconnectionstatechange = () => {
+        // "checking" that never reaches "connected" means the candidates never
+        // paired up — that is the symptom a TURN server exists to solve.
+        if (pc.iceConnectionState === "failed") {
+          console.warn(
+            `[rtc] ICE failed for ${peerId.slice(0, 8)} — likely needs a TURN server for this network`,
+          );
+        }
       };
 
       return peer;
@@ -204,6 +246,22 @@ export function useWebrtcMesh(opts: {
 
     const channel = supabase.channel(`rtc:${roomId}`, { config: { broadcast: { self: false } } });
     channelRef.current = channel;
+    let retryTimer: number | null = null;
+
+    // Say hello, then offer to everyone we should be offering to. Safe to call
+    // repeatedly: negotiate() no-ops unless the connection is idle.
+    const announce = () => {
+      if (!subscribedRef.current || cancelled) return;
+      channelRef.current?.send({ type: "broadcast", event: "hello", payload: { from: userId } });
+      const targets = new Set([...peerIdsRef.current, ...knownPeersRef.current]);
+      targets.forEach((id) => {
+        if (id === userId || !(userId < id)) return;
+        const peer = peersRef.current.get(id);
+        // Already connected or mid-handshake — leave it alone.
+        if (peer && (peer.pc.connectionState === "connected" || peer.makingOffer)) return;
+        void negotiateRef.current(id);
+      });
+    };
 
     channel
       .on("broadcast", { event: "signal" }, async ({ payload }) => {
@@ -253,43 +311,51 @@ export function useWebrtcMesh(opts: {
       })
       // Someone announced themselves: the lower id starts the offer, the higher
       // id answers the announcement so the lower id learns about it too.
+      //
+      // Both sides reply regardless of ordering. A single unanswered hello used
+      // to leave a pair permanently disconnected when one browser subscribed
+      // after the other had already announced.
       .on("broadcast", { event: "hello" }, ({ payload }) => {
-        const { from } = payload as { from: string };
+        const { from, reply } = payload as { from: string; reply?: boolean };
         if (!from || from === userId || cancelled) return;
+        knownPeersRef.current.add(from);
         if (userId < from) {
           void negotiate(from);
-        } else {
+        } else if (!reply) {
+          // Answer so they learn we exist, but don't bounce replies forever.
           channelRef.current?.send({
             type: "broadcast",
             event: "hello",
-            payload: { from: userId },
+            payload: { from: userId, reply: true },
           });
         }
       })
       .subscribe((status) => {
         if (status === "SUBSCRIBED") {
           subscribedRef.current = true;
-          channel.send({ type: "broadcast", event: "hello", payload: { from: userId } });
-          // Kick off connections to anyone we already know about.
-          peerIdsRef.current.forEach((id) => {
-            if (id !== userId && userId < id) void negotiate(id);
-          });
+          announce();
+          // Re-announce for a while: presence and the RTC channel come up
+          // independently, so a peer may not have been listening yet.
+          let ticks = 0;
+          retryTimer = window.setInterval(() => {
+            if (cancelled || ++ticks > 10) {
+              if (retryTimer) window.clearInterval(retryTimer);
+              retryTimer = null;
+              return;
+            }
+            announce();
+          }, 2000);
         }
       });
 
     negotiateRef.current = (peerId: string) => void negotiate(peerId);
-
-    helloRef.current = () => {
-      if (!subscribedRef.current) return;
-      channelRef.current?.send({ type: "broadcast", event: "hello", payload: { from: userId } });
-      peerIdsRef.current.forEach((id) => {
-        if (id !== userId && userId < id) void negotiate(id);
-      });
-    };
+    helloRef.current = announce;
 
     return () => {
       cancelled = true;
       subscribedRef.current = false;
+      if (retryTimer) window.clearInterval(retryTimer);
+      knownPeersRef.current.clear();
       peersRef.current.forEach((p) => p.pc.close());
       peersRef.current.clear();
       pendingIceRef.current.clear();
