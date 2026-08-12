@@ -19,7 +19,6 @@ import { toast } from "sonner";
 import { usePlan } from "@/lib/plan-context";
 import { ReportModal, BlockModal } from "@/components/report-block-modals";
 import { RatingModal } from "@/components/rating-modal";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { supabase } from "@/integrations/supabase/client";
 import { sendFriendRequest, markPresence, clearPresence } from "@/lib/social";
 import { useWebrtcMesh } from "@/lib/use-webrtc-mesh";
@@ -234,18 +233,36 @@ function Room() {
     };
   }, []);
 
-  // NSFW content moderation: samples the local camera every 4s using nsfwjs.
-  // 3 consecutive unsafe frames -> auto-remove from classroom + auto-report.
+  // NSFW camera moderation.
+  //
+  // Deliberately conservative: only explicit classes count, and "Sexy" is
+  // ignored entirely — it fires on ordinary webcam footage (a plain t-shirt,
+  // dim lighting, sitting close to the lens) and was ejecting real students
+  // mid-class. Strikes must also be consecutive *and* survive a re-check, so a
+  // single bad frame cannot remove anyone.
+  //
+  // The model is loaded lazily well after join so it never delays the camera.
   const [nsfwWarn, setNsfwWarn] = useState(false);
   useEffect(() => {
-    const SAMPLE_MS = 4000;
-    const THRESHOLD = 0.7;
-    const STRIKES_MAX = 3;
+    const SAMPLE_MS = 5000;
+    const LOAD_DELAY_MS = 8000;
+    // Explicit content scores near 1.0; 0.9 leaves ordinary footage alone.
+    const THRESHOLD = 0.9;
+    const STRIKES_MAX = 5;
     let cancelled = false;
     let interval: number | null = null;
+    let timer: number | null = null;
     let model: import("nsfwjs").NSFWJS | null = null;
     let strikes = 0;
     let kicked = false;
+
+    const scoreFrame = async (v: HTMLVideoElement) => {
+      const preds = await model!.classify(v, 5);
+      // "Sexy" is excluded on purpose — see note above.
+      return preds
+        .filter((p) => p.className === "Porn" || p.className === "Hentai")
+        .reduce((s, p) => s + p.probability, 0);
+    };
 
     const tick = async () => {
       if (cancelled || kicked || !model) return;
@@ -254,54 +271,63 @@ function Room() {
       const camOn = !!stream?.getVideoTracks().some((t) => t.enabled && t.readyState === "live");
       if (!camOn || !v || v.readyState < 2 || v.videoWidth === 0) return;
       try {
-        const preds = await model.classify(v, 5);
-        const unsafe = preds
-          .filter(
-            (p) => p.className === "Porn" || p.className === "Hentai" || p.className === "Sexy",
-          )
-          .reduce((s, p) => s + p.probability, 0);
-        if (unsafe >= THRESHOLD) {
-          strikes += 1;
-          setNsfwWarn(true);
-          if (strikes === 1) toast.warning("Inappropriate content detected on your camera");
-          if (strikes >= STRIKES_MAX) {
-            kicked = true;
-            const { data: userData } = await supabase.auth.getUser();
-            if (userData.user) {
-              await supabase.from("reports").insert({
-                reporter_id: userData.user.id,
-                reported_user_id: userData.user.id,
-                reason: "other",
-                notes: `Auto-flagged by camera moderation: nudity detected (score ${unsafe.toFixed(2)})`,
-              });
-            }
-            toast.error("Removed from classroom — inappropriate content detected");
-            nav({ to: "/home" });
-          }
-        } else {
+        const unsafe = await scoreFrame(v);
+        if (unsafe < THRESHOLD) {
           if (strikes > 0) setNsfwWarn(false);
           strikes = 0;
+          return;
+        }
+
+        // Second look before counting it — motion blur and odd frames produce
+        // one-off false positives.
+        await new Promise((r) => setTimeout(r, 400));
+        if (cancelled || !videoRef.current) return;
+        if ((await scoreFrame(videoRef.current)) < THRESHOLD) return;
+
+        strikes += 1;
+        setNsfwWarn(true);
+        if (strikes === 1) {
+          toast.warning("Please keep your camera appropriate for class.");
+        }
+        if (strikes >= STRIKES_MAX) {
+          kicked = true;
+          const { data: userData } = await supabase.auth.getUser();
+          if (userData.user) {
+            await supabase.from("reports").insert({
+              reporter_id: userData.user.id,
+              reported_user_id: userData.user.id,
+              reason: "other",
+              notes: `Auto-flagged by camera moderation (score ${unsafe.toFixed(2)})`,
+            });
+          }
+          toast.error("Removed from classroom — inappropriate content detected");
+          nav({ to: "/home" });
         }
       } catch {
         // ignore transient classify errors
       }
     };
 
-    (async () => {
-      try {
-        const nsfw = await import("nsfwjs");
-        await import("@tensorflow/tfjs");
-        if (cancelled) return;
-        model = await nsfw.load();
-        if (cancelled) return;
-        interval = window.setInterval(tick, SAMPLE_MS);
-      } catch (err) {
-        console.error("NSFW model failed to load", err);
-      }
-    })();
+    // Loading tfjs + the model is ~40MB of work; deferring it keeps the join
+    // and the first camera frames fast.
+    timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const nsfw = await import("nsfwjs");
+          await import("@tensorflow/tfjs");
+          if (cancelled) return;
+          model = await nsfw.load();
+          if (cancelled) return;
+          interval = window.setInterval(tick, SAMPLE_MS);
+        } catch (err) {
+          console.error("NSFW model failed to load", err);
+        }
+      })();
+    }, LOAD_DELAY_MS);
 
     return () => {
       cancelled = true;
+      if (timer) window.clearTimeout(timer);
       if (interval) window.clearInterval(interval);
     };
   }, [nav]);
@@ -331,7 +357,42 @@ function Room() {
 
   const ensureStream = async (want: { audio: boolean; video: boolean }) => {
     const token = ++gumTokenRef.current;
-    // Always stop the current stream first so the camera LED releases immediately.
+
+    // Toggling the mic used to tear the whole stream down and re-run
+    // getUserMedia, which restarts the camera and blanks everyone's tile for a
+    // second or two. If we already hold the video track we need, just flip the
+    // audio track instead.
+    const current = streamRef.current;
+    if (current && want.video) {
+      const video = current.getVideoTracks()[0];
+      if (video?.readyState === "live") {
+        const audio = current.getAudioTracks()[0];
+        if (want.audio && !audio) {
+          try {
+            const extra = await navigator.mediaDevices.getUserMedia({ audio: true });
+            if (token !== gumTokenRef.current) {
+              extra.getTracks().forEach((t) => t.stop());
+              return;
+            }
+            extra.getAudioTracks().forEach((t) => current.addTrack(t));
+            setLocalStream(new MediaStream(current.getTracks()));
+          } catch {
+            toast.error("Could not access the microphone.");
+            setMic(false);
+          }
+          return;
+        }
+        if (!want.audio && audio) {
+          audio.stop();
+          current.removeTrack(audio);
+          setLocalStream(new MediaStream(current.getTracks()));
+          return;
+        }
+        return; // already in the requested state
+      }
+    }
+
+    // Otherwise fall back to a full re-acquire.
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
     setLocalStream(null);
@@ -830,7 +891,6 @@ function Room() {
         </span>
         <span className="text-sm font-semibold">Classroom · {roomId}</span>
         <div className="ml-auto flex items-center gap-3">
-          <ThemeToggle />
           <button
             onClick={() => setInviteOpen(true)}
             className="inline-flex items-center gap-1 rounded-lg bg-white/10 px-3 py-1.5 text-xs font-semibold hover:bg-white/20"
@@ -1463,7 +1523,6 @@ function PrivateSession({
         </span>
         <span className="text-xs text-white/60">{totalSeats}/7 in room</span>
         <div className="ml-auto flex items-center gap-2">
-          <ThemeToggle />
           <button className="inline-flex items-center gap-1 rounded-lg bg-white/10 px-3 py-1.5 text-xs font-semibold hover:bg-white/20">
             <VolumeX className="h-4 w-4" /> Mute All
           </button>

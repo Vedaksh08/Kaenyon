@@ -39,7 +39,6 @@ import {
 } from "lucide-react";
 import { usePlan } from "@/lib/plan-context";
 import { BottomNav } from "@/components/bottom-nav";
-import { ThemeToggle } from "@/components/theme-toggle";
 
 export const Route = createFileRoute("/_authenticated/home")({
   head: () => ({
@@ -467,7 +466,6 @@ function Home() {
             <p className="mt-1 text-sm text-muted-foreground">Ready to master {course} today?</p>
           </div>
           <div className="flex items-center gap-3">
-            <ThemeToggle />
             <div className="relative">
               <Bell className="h-5 w-5 text-foreground" />
               <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-danger" />

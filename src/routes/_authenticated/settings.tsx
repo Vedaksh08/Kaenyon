@@ -10,7 +10,7 @@ import { KaenyonMark } from "@/components/brand";
 export const Route = createFileRoute("/_authenticated/settings")({
   head: () => ({
     meta: [
-      { title: "Settings — Kaenyon" },
+      { title: "Profile — Kaenyon" },
       { name: "description", content: "Manage your Kaenyon account, profile and appearance." },
     ],
   }),
@@ -104,22 +104,29 @@ function Settings() {
   return (
     <div className="min-h-screen bg-background pb-24">
       <header className="border-b border-border bg-card">
-        <div className="mx-auto flex max-w-md items-center gap-3 px-5 py-5">
+        <div className="mx-auto flex max-w-md items-center gap-2.5 px-5 py-4">
           <KaenyonMark className="h-7 w-7" />
-          <h1 className="text-lg font-bold">Settings</h1>
+          <h1 className="text-lg font-bold">Profile</h1>
         </div>
       </header>
 
       <div className="mx-auto max-w-md space-y-4 px-5 py-5">
-        {/* Account */}
-        <section className="rounded-xl border border-border bg-card p-5">
-          <div className="flex items-center gap-4">
-            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-primary text-xl font-bold text-primary-foreground">
+        {/* Identity card */}
+        <section className="overflow-hidden rounded-2xl border border-border bg-card">
+          <div className="h-20 bg-gradient-to-br from-primary to-primary/60" />
+          <div className="px-5 pb-5">
+            <div className="-mt-10 flex h-20 w-20 items-center justify-center rounded-full border-4 border-card bg-primary text-2xl font-bold text-primary-foreground">
               {displayName.charAt(0).toUpperCase()}
             </div>
-            <div className="min-w-0">
-              <div className="truncate font-semibold">{displayName}</div>
+            <div className="mt-3">
+              <div className="truncate text-lg font-bold">{displayName}</div>
               <div className="truncate text-sm text-muted-foreground">{profile?.email}</div>
+              {(profile?.course || profile?.year) && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {profile?.course && <Chip>{profile.course}</Chip>}
+                  {profile?.year && <Chip>{profile.year}</Chip>}
+                </div>
+              )}
             </div>
           </div>
         </section>
@@ -256,6 +263,14 @@ function Settings() {
 
 const inputClass =
   "w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/25";
+
+function Chip({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="rounded-full bg-secondary px-2.5 py-0.5 text-xs font-medium text-secondary-foreground">
+      {children}
+    </span>
+  );
+}
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (

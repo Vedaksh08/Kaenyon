@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Home, Users, Trophy, Settings } from "lucide-react";
+import { Home, Users, Trophy, User } from "lucide-react";
 
 export function BottomNav() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -27,8 +27,8 @@ export function BottomNav() {
           RANKS
         </Link>
         <Link to="/settings" className={itemCls(isActive("/settings"))}>
-          <Settings className="h-5 w-5" />
-          SETTINGS
+          <User className="h-5 w-5" />
+          PROFILE
         </Link>
       </div>
     </nav>
