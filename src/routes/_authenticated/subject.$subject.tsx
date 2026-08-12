@@ -29,14 +29,6 @@ function prettify(slug: string) {
     .join(" ");
 }
 
-const TICKER = [
-  "James Miller is ACTIVE",
-  "Rahul S. is ACTIVE",
-  "Sofia Chen is ACTIVE",
-  "Anita Kumar is ACTIVE",
-  "David Chen is ACTIVE",
-];
-
 interface Classroom {
   id: string;
   room_number: number;
@@ -122,6 +114,8 @@ function SubjectPage() {
     };
   }, [subject]);
 
+  const liveCount = classrooms.reduce((sum, c) => sum + c.used, 0);
+
   // Always show every filled room, but never more than 3 joinable ones.
   const OPEN_LIMIT = 3;
   let openShown = 0;
@@ -133,16 +127,6 @@ function SubjectPage() {
 
   return (
     <div className="min-h-screen bg-background pb-12">
-      <div className="overflow-hidden bg-navy text-white py-2">
-        <div className="flex w-max animate-marquee whitespace-nowrap">
-          {[...TICKER, ...TICKER, ...TICKER].map((t, i) => (
-            <span key={i} className="mx-6 text-xs font-medium uppercase tracking-wider">
-              ✦ {t}
-            </span>
-          ))}
-        </div>
-      </div>
-
       <div className="mx-auto max-w-6xl px-5 pt-6">
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -153,8 +137,20 @@ function SubjectPage() {
               <ArrowLeft className="h-4 w-4" /> Back
             </Link>
             <h1 className="mt-2 text-3xl font-extrabold">{name}</h1>
-            <p className="mt-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Join a live classroom session
+            {/* Real presence, counted from user_presence — replaces a marquee
+             * of hardcoded names that implied an active userbase. */}
+            <p className="mt-1.5 flex items-center gap-2 text-sm text-muted-foreground">
+              {liveCount > 0 ? (
+                <>
+                  <span className="relative flex h-2 w-2">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-75" />
+                    <span className="relative inline-flex h-2 w-2 rounded-full bg-success" />
+                  </span>
+                  {liveCount} {liveCount === 1 ? "student" : "students"} studying now
+                </>
+              ) : (
+                "Join a classroom to start solving doubts"
+              )}
             </p>
           </div>
         </div>

@@ -7,7 +7,6 @@ import {
   VideoOff,
   MessageSquare,
   X,
-  Settings,
   MoreVertical,
   Send,
   ArrowLeft,
@@ -133,6 +132,8 @@ function Room() {
 
   const [blocked, setBlocked] = useState<string[]>([]);
   const [remoteParticipants, setRemoteParticipants] = useState<Participant[]>([]);
+  // The header used to print the raw room UUID at the user.
+  const [roomTitle, setRoomTitle] = useState("Classroom");
   // Unique per browser tab, so the same account on two devices shows as two people.
   const sessionKeyRef = useRef<string>(
     typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -535,6 +536,26 @@ function Room() {
 
   const visibleDoubts = doubts.filter((d) => !blocked.includes(d.user));
 
+  // Resolve "Computer Science · Room 2" for the header.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from("classrooms")
+        .select("room_number, subjects(name)")
+        .eq("id", roomId)
+        .maybeSingle();
+      if (cancelled || !data) return;
+      const subjectName = (data.subjects as { name: string } | null)?.name;
+      setRoomTitle(
+        subjectName ? `${subjectName} · Room ${data.room_number}` : `Room ${data.room_number}`,
+      );
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [roomId]);
+
   // Load doubts for this classroom + subscribe to realtime inserts/deletes.
   useEffect(() => {
     let cancelled = false;
@@ -886,25 +907,27 @@ function Room() {
     <div className="min-h-screen bg-room text-white">
       {/* Top bar */}
       <header className="flex flex-wrap items-center gap-3 border-b border-white/10 px-5 py-3">
-        <span className="inline-flex items-center gap-2 rounded-full bg-danger px-3 py-1 text-xs font-bold">
-          <span className="h-2 w-2 animate-pulse rounded-full bg-white" /> LIVE CLASSROOM
-        </span>
-        <span className="text-sm font-semibold">Classroom · {roomId}</span>
-        <div className="ml-auto flex items-center gap-3">
+        <button
+          onClick={() => nav({ to: "/home" })}
+          className="-ml-1 rounded-lg p-1.5 text-white/70 transition hover:bg-white/10 hover:text-white"
+          aria-label="Leave classroom"
+        >
+          <ArrowLeft className="h-5 w-5" />
+        </button>
+        <div className="min-w-0">
+          <div className="truncate text-sm font-semibold">{roomTitle}</div>
+          <div className="flex items-center gap-1.5 text-xs text-white/50">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-danger" />
+            Live · {remoteParticipants.length + 1}{" "}
+            {remoteParticipants.length === 0 ? "person" : "people"}
+          </div>
+        </div>
+        <div className="ml-auto">
           <button
             onClick={() => setInviteOpen(true)}
-            className="inline-flex items-center gap-1 rounded-lg bg-white/10 px-3 py-1.5 text-xs font-semibold hover:bg-white/20"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-2 text-xs font-semibold transition hover:bg-white/20"
           >
-            <UserPlus className="h-4 w-4" /> Invite to Private
-          </button>
-          <button
-            onClick={() => startPrivateWith([])}
-            className="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold hover:bg-primary/90"
-          >
-            Simulate Request
-          </button>
-          <button className="text-white/70 hover:text-white">
-            <Settings className="h-5 w-5" />
+            <UserPlus className="h-4 w-4" /> Invite to private
           </button>
         </div>
       </header>
