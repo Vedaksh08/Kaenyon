@@ -15,6 +15,7 @@ import {
   Check,
   MonitorUp,
   PenLine,
+  ShieldAlert,
 } from "lucide-react";
 import { toast } from "sonner";
 import { usePlan } from "@/lib/plan-context";
@@ -30,24 +31,91 @@ import { Whiteboard } from "@/components/whiteboard";
  * playing remote audio there would break the whole premise. Private sessions
  * opt in.
  */
-function RemoteVideo({ stream, audible = false }: { stream: MediaStream; audible?: boolean }) {
+function RemoteVideo({
+  stream,
+  audible = false,
+  contain = false,
+}: {
+  stream: MediaStream;
+  audible?: boolean;
+  /** Letterbox rather than crop — a shared screen must never be cut off. */
+  contain?: boolean;
+}) {
   const ref = useRef<HTMLVideoElement | null>(null);
-  useEffect(() => {
-    const v = ref.current;
+  // Callback ref: the element remounts when the layout switches to the
+  // presentation stage, and an effect keyed on [stream] would not re-attach.
+  const attach = (v: HTMLVideoElement | null) => {
+    ref.current = v;
     if (!v) return;
     if (v.srcObject !== stream) v.srcObject = stream;
     const p = v.play?.();
     if (p && typeof p.catch === "function") p.catch(() => {});
+  };
+  useEffect(() => {
+    attach(ref.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stream]);
   return (
     <video
-      ref={ref}
+      ref={attach}
       autoPlay
       playsInline
       muted={!audible}
-      className="h-full w-full rounded-lg object-cover"
+      className={`h-full w-full rounded-lg ${contain ? "object-contain" : "object-cover"}`}
     />
   );
+}
+
+/**
+ * Full-screen and unmissable, like the AFK warning. A toast was too easy to
+ * miss while the strike count kept climbing toward removal.
+ */
+function NsfwWarning({
+  strikes,
+  onTurnOffCamera,
+}: {
+  strikes: number;
+  onTurnOffCamera: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-danger/30 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-sm rounded-xl border border-danger/40 bg-room-card p-6 text-center shadow-elevated">
+        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-danger/20 text-danger">
+          <ShieldAlert className="h-7 w-7" />
+        </div>
+        <h3 className="mt-4 text-lg font-bold text-white">Inappropriate content detected</h3>
+        <p className="mt-2 text-sm text-white/70">
+          Your camera is showing content that isn't allowed in a classroom. Cover up or turn your
+          camera off now.
+        </p>
+        <div className="mt-4 rounded-lg bg-danger/10 px-4 py-3">
+          <div className="text-xs font-semibold uppercase tracking-wide text-danger">
+            Warning {strikes} of {NSFW_STRIKES_MAX}
+          </div>
+          <div className="mt-1 text-xs text-white/60">
+            You'll be removed from the classroom after {NSFW_STRIKES_MAX} warnings.
+          </div>
+        </div>
+        <button
+          onClick={onTurnOffCamera}
+          className="mt-5 w-full rounded-lg bg-danger px-4 py-2.5 text-sm font-semibold text-white hover:bg-danger/90"
+        >
+          Turn my camera off
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Local preview of the screen we are sharing. */
+function ScreenPreview({ stream }: { stream: MediaStream }) {
+  const attach = (v: HTMLVideoElement | null) => {
+    if (!v) return;
+    if (v.srcObject !== stream) v.srcObject = stream;
+    const p = v.play?.();
+    if (p && typeof p.catch === "function") p.catch(() => {});
+  };
+  return <video ref={attach} autoPlay muted playsInline className="h-full w-full object-contain" />;
 }
 
 export const Route = createFileRoute("/_authenticated/room/$roomId")({
@@ -113,6 +181,9 @@ interface Doubt {
   status: "open" | "offer" | "solving";
   text: string;
 }
+
+/** Consecutive unsafe samples before removal from the classroom. */
+const NSFW_STRIKES_MAX = 3;
 
 function Room() {
   const { roomId } = Route.useParams();
@@ -264,12 +335,14 @@ function Room() {
   //
   // The model is loaded lazily well after join so it never delays the camera.
   const [nsfwWarn, setNsfwWarn] = useState(false);
+  const [nsfwStrikes, setNsfwStrikes] = useState(0);
   useEffect(() => {
-    const SAMPLE_MS = 5000;
-    const LOAD_DELAY_MS = 8000;
-    // Explicit content scores near 1.0; 0.9 leaves ordinary footage alone.
-    const THRESHOLD = 0.9;
-    const STRIKES_MAX = 5;
+    // Checked every second: at 5s intervals with 5 strikes it took the best part
+    // of a minute to react, which is far too long for a room full of students.
+    const SAMPLE_MS = 1000;
+    const LOAD_DELAY_MS = 2000;
+    const THRESHOLD = 0.75;
+    const STRIKES_MAX = NSFW_STRIKES_MAX;
     let cancelled = false;
     let interval: number | null = null;
     let timer: number | null = null;
@@ -314,7 +387,10 @@ function Room() {
       try {
         const unsafe = await scoreFrame();
         if (unsafe < THRESHOLD) {
-          if (strikes > 0) setNsfwWarn(false);
+          if (strikes > 0) {
+            setNsfwWarn(false);
+            setNsfwStrikes(0);
+          }
           strikes = 0;
           return;
         }
@@ -326,10 +402,8 @@ function Room() {
         if ((await scoreFrame()) < THRESHOLD) return;
 
         strikes += 1;
+        setNsfwStrikes(strikes);
         setNsfwWarn(true);
-        if (strikes === 1) {
-          toast.warning("Please keep your camera appropriate for class.");
-        }
         if (strikes >= STRIKES_MAX) {
           kicked = true;
           const { data: userData } = await supabase.auth.getUser();
@@ -984,13 +1058,18 @@ function Room() {
   };
 
   const startPrivateWith = async (ids: string[], askerUserId?: string) => {
-    setInvitedIds([]);
+    // Seed the session with the people we invited. Clearing this and waiting for
+    // private_invite_response left the host in an empty room with no peers, so
+    // the mesh had nobody to connect to and neither camera nor mic ever worked.
+    const invitedUserIds = remoteParticipants
+      .filter((p) => ids.includes(p.id))
+      .map((p) => p.userId ?? p.id);
+    setInvitedIds(invitedUserIds);
     setPrivateSession(true);
     // We only rate someone else. If we are the asker, the ratee is whoever we
     // invited; if we are the helper, we rate nobody.
     if (askerUserId && userId && askerUserId === userId) {
-      const firstTarget = remoteParticipants.find((p) => ids.includes(p.id))?.userId;
-      setPendingRatee(firstTarget ?? null);
+      setPendingRatee(invitedUserIds[0] ?? null);
     } else {
       setPendingRatee(null);
     }
@@ -1026,38 +1105,52 @@ function Room() {
     const invitees = remoteParticipants.filter((p) => invitedIds.includes(p.userId ?? p.id));
 
     return (
-      <PrivateSession
-        youName={youName}
-        invitees={invitees}
-        roomParticipants={remoteParticipants.filter((p) => !blocked.includes(p.userId ?? p.id))}
-        roomId={roomId}
-        sessionKey={sessionKeyRef.current}
-        localStream={localStream}
-        cam={cam}
-        mic={mic}
-        onToggleCam={() => void toggleCam()}
-        onToggleMic={toggleMic}
-        // pendingRatee is set only for the student who raised the doubt, which
-        // is exactly who should be able to mute people here.
-        isModerator={pendingRatee !== null}
-        onReturn={() => {
-          setPrivateSession(false);
-          setInvitedIds([]);
-          // Talking is only allowed in private, so drop the mic on the way out.
-          if (mic) {
-            setMic(false);
-            void ensureStream({ audio: false, video: true });
-          }
-          // Helpers have no pendingRatee, so they return to the room without
-          // being asked to rate the person they just helped.
-          if (pendingRatee) {
-            setRatingFor(pendingRatee);
-            setPendingRatee(null);
-            setRating(true);
-          }
-        }}
-        onInvite={(ids) => void sendInvites(ids)}
-      />
+      <>
+        {/* Moderation keeps running in here, so the warning has to render here
+         * too — this branch returns before the classroom's copy. */}
+        {nsfwWarn && (
+          <NsfwWarning
+            strikes={nsfwStrikes}
+            onTurnOffCamera={() => {
+              void ensureStream({ audio: false, video: false });
+              setCam(false);
+              setNsfwWarn(false);
+            }}
+          />
+        )}
+        <PrivateSession
+          youName={youName}
+          invitees={invitees}
+          roomParticipants={remoteParticipants.filter((p) => !blocked.includes(p.userId ?? p.id))}
+          roomId={roomId}
+          sessionKey={sessionKeyRef.current}
+          localStream={localStream}
+          cam={cam}
+          mic={mic}
+          onToggleCam={() => void toggleCam()}
+          onToggleMic={toggleMic}
+          // pendingRatee is set only for the student who raised the doubt, which
+          // is exactly who should be able to mute people here.
+          isModerator={pendingRatee !== null}
+          onReturn={() => {
+            setPrivateSession(false);
+            setInvitedIds([]);
+            // Talking is only allowed in private, so drop the mic on the way out.
+            if (mic) {
+              setMic(false);
+              void ensureStream({ audio: false, video: true });
+            }
+            // Helpers have no pendingRatee, so they return to the room without
+            // being asked to rate the person they just helped.
+            if (pendingRatee) {
+              setRatingFor(pendingRatee);
+              setPendingRatee(null);
+              setRating(true);
+            }
+          }}
+          onInvite={(ids) => void sendInvites(ids)}
+        />
+      </>
     );
   }
 
@@ -1439,6 +1532,17 @@ function Room() {
           </div>
         </div>
       )}
+      {nsfwWarn && (
+        <NsfwWarning
+          strikes={nsfwStrikes}
+          onTurnOffCamera={() => {
+            void ensureStream({ audio: false, video: false });
+            setCam(false);
+            setNsfwWarn(false);
+          }}
+        />
+      )}
+
       {afkWarn && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4">
           <div className="w-full max-w-sm rounded-xl border border-white/10 bg-room-card p-6 text-center shadow-elevated">
@@ -1735,6 +1839,37 @@ function PrivateSession({
     setShareStream(combined);
   }, [sharing, localStream]);
 
+  // Tell the others when we start and stop presenting, so they can promote our
+  // feed to the stage. The video track alone does not say whether it is a
+  // camera or a screen.
+  useEffect(() => {
+    if (!channel) return;
+    void channel.send({
+      type: "broadcast",
+      event: "presenting",
+      payload: { from: sessionKey, on: sharing },
+    });
+  }, [sharing, channel, sessionKey]);
+
+  const [remotePresenter, setRemotePresenter] = useState<string | null>(null);
+  useEffect(() => {
+    if (!channel) return;
+    const onPresenting = ({ payload }: { payload: unknown }) => {
+      const p = payload as { from?: string; on?: boolean };
+      if (!p.from) return;
+      setRemotePresenter((prev) => (p.on ? p.from! : prev === p.from ? null : prev));
+    };
+    channel.on("broadcast", { event: "presenting" }, onPresenting);
+  }, [channel]);
+
+  // Someone stopped sharing by leaving; drop the stage with them.
+  useEffect(() => {
+    if (remotePresenter && !all.some((p) => p.id === remotePresenter)) setRemotePresenter(null);
+  }, [all, remotePresenter]);
+
+  const stagePeer = remotePresenter ? all.find((p) => p.id === remotePresenter) : null;
+  const onStage = sharing || !!stagePeer;
+
   useEffect(() => {
     return () => {
       screenStreamRef.current?.getTracks().forEach((t) => t.stop());
@@ -1819,7 +1954,9 @@ function PrivateSession({
       </header>
 
       <main
-        className={`mx-auto max-w-6xl gap-4 p-6 ${panel === "board" ? "grid lg:grid-cols-[1fr_380px]" : ""}`}
+        className={`mx-auto max-w-6xl gap-4 p-6 ${
+          panel === "board" || onStage ? "grid lg:grid-cols-[1fr_300px]" : ""
+        }`}
       >
         {panel === "board" && (
           <div className="order-2 h-[60vh] overflow-hidden rounded-2xl border border-white/10 bg-room-card lg:order-1 lg:h-[calc(100vh-190px)]">
@@ -1827,9 +1964,38 @@ function PrivateSession({
           </div>
         )}
 
+        {/* Presentation stage. Whoever is sharing fills the space and everyone
+         * else shrinks to a filmstrip, the way Meet does it. */}
+        {panel !== "board" && onStage && (
+          <div className="order-2 flex flex-col overflow-hidden rounded-2xl border border-white/10 bg-black lg:order-1 lg:h-[calc(100vh-190px)]">
+            <div className="flex min-h-0 flex-1 items-center justify-center">
+              {stagePeer && privateStreams[stagePeer.id] ? (
+                <RemoteVideo
+                  stream={privateStreams[stagePeer.id]}
+                  audible={!forceMuted.includes(stagePeer.id)}
+                  contain
+                />
+              ) : sharing && shareStream ? (
+                <ScreenPreview stream={shareStream} />
+              ) : (
+                <div className="flex flex-col items-center gap-2 text-white/50">
+                  <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white/70" />
+                  <span className="text-xs">Starting presentation…</span>
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-2 border-t border-white/10 px-4 py-2 text-xs text-white/60">
+              <MonitorUp className="h-3.5 w-3.5" />
+              {sharing ? "You are presenting" : `${stagePeer?.name ?? "Someone"} is presenting`}
+            </div>
+          </div>
+        )}
+
         <div
           className={`order-1 grid gap-4 lg:order-2 ${
-            panel === "board" ? "grid-cols-2 content-start" : "sm:grid-cols-2 lg:grid-cols-3"
+            panel === "board" || onStage
+              ? "grid-cols-2 content-start lg:grid-cols-1"
+              : "sm:grid-cols-2 lg:grid-cols-3"
           }`}
         >
           <div className="rounded-2xl border border-primary bg-room-card p-4 text-center">
