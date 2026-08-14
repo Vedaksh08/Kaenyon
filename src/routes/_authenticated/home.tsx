@@ -112,46 +112,40 @@ function Home() {
   const ordered = [...subjects].sort((a, b) => b.live - a.live);
   const featured = ordered.slice(0, 5);
   const rest = ordered.slice(5);
+  const courseLabel = profile?.course?.trim().toUpperCase() || "YOU";
 
   return (
     <div className="min-h-screen bg-background pb-24">
-      <header className="border-b border-border bg-card">
-        <div className="mx-auto max-w-3xl px-5 py-5">
-          <div className="flex items-center justify-between gap-4">
-            <div className="min-w-0">
-              <h1 className="truncate text-xl font-bold">Hey, {firstName}</h1>
-              <p className="mt-0.5 text-sm text-muted-foreground">
-                {totalLive > 0 ? (
-                  <span className="inline-flex items-center gap-1.5">
-                    <span className="relative flex h-2 w-2">
-                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-75" />
-                      <span className="relative inline-flex h-2 w-2 rounded-full bg-success" />
-                    </span>
-                    {totalLive} studying right now
+      <header className="px-5 pt-8">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h1 className="truncate text-2xl font-extrabold text-primary">Hey, {firstName}! 👋</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {totalLive > 0 ? (
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="relative flex h-2 w-2">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-75" />
+                    <span className="relative inline-flex h-2 w-2 rounded-full bg-success" />
                   </span>
-                ) : (
-                  "Pick a subject to get started"
-                )}
-              </p>
-            </div>
-            <KaenyonMark className="h-9 w-9 shrink-0" />
+                  {totalLive} studying right now
+                </span>
+              ) : (
+                `Ready to master ${courseLabel.toLowerCase()} today?`
+              )}
+            </p>
           </div>
+          <KaenyonMark className="h-8 w-8 shrink-0" />
         </div>
       </header>
 
       {loading ? (
-        <div className="mx-auto max-w-3xl px-5 pt-6">
-          <div className="grid gap-3 sm:grid-cols-2">
-            {[0, 1, 2, 3].map((i) => (
-              <div
-                key={i}
-                className="h-[76px] animate-pulse rounded-xl border border-border bg-card"
-              />
-            ))}
-          </div>
+        <div className="mt-8 flex gap-3 px-5">
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="h-[132px] w-32 shrink-0 animate-pulse rounded-xl bg-card" />
+          ))}
         </div>
       ) : subjects.length === 0 ? (
-        <div className="mx-auto max-w-3xl px-5 pt-6">
+        <div className="mt-10 px-5">
           <div className="rounded-xl border border-dashed border-border p-10 text-center">
             <BookOpen className="mx-auto h-8 w-8 text-muted-foreground" />
             <p className="mt-3 text-sm font-medium">No subjects yet</p>
@@ -162,47 +156,35 @@ function Home() {
         </div>
       ) : (
         <>
-          <section className="mt-6">
-            <h2 className="mx-auto flex max-w-3xl items-center gap-1.5 px-5 text-sm font-bold">
-              <Sparkles className="h-4 w-4 text-primary" /> Recommended for you
+          <section className="mt-8">
+            <h2 className="flex items-center gap-1 px-5 text-sm font-bold text-foreground">
+              <Sparkles className="h-4 w-4 text-primary" /> Recommended for {courseLabel}
             </h2>
-            {/* Horizontal rail for the first few, so the page opens with
-             * something glanceable rather than a wall of identical cards. */}
-            <div className="mx-auto max-w-3xl">
-              <div className="mt-3 flex gap-3 overflow-x-auto px-5 pb-2">
-                {featured.map((s) => {
-                  const { icon: Icon, className } = ICONS[s.slug] ?? FALLBACK;
-                  return (
-                    <Link
-                      key={s.slug}
-                      to="/subject/$subject"
-                      params={{ subject: s.slug }}
-                      className="flex w-36 shrink-0 flex-col items-start gap-3 rounded-xl border border-border bg-card p-4 transition hover:border-primary/40 hover:shadow-md"
+            <div className="mt-3 flex gap-3 overflow-x-auto px-5 pb-2">
+              {featured.map((s) => {
+                const { icon: Icon, className } = ICONS[s.slug] ?? FALLBACK;
+                return (
+                  <Link
+                    key={s.slug}
+                    to="/subject/$subject"
+                    params={{ subject: s.slug }}
+                    className="relative flex w-32 shrink-0 flex-col items-start gap-3 rounded-xl bg-card p-4 shadow-card hover:shadow-elevated"
+                  >
+                    <div
+                      className={`flex h-10 w-10 items-center justify-center rounded-lg ${className}`}
                     >
-                      <div
-                        className={`flex h-10 w-10 items-center justify-center rounded-lg ${className}`}
-                      >
-                        <Icon className="h-5 w-5" />
-                      </div>
-                      <div>
-                        <div className="text-sm font-semibold leading-tight">{s.name}</div>
-                        <div className="mt-1 text-[11px] text-muted-foreground">
-                          {s.live > 0 ? (
-                            <span className="font-medium text-success">{s.live} online</span>
-                          ) : (
-                            "No one online"
-                          )}
-                        </div>
-                      </div>
-                    </Link>
-                  );
-                })}
-              </div>
+                      <Icon className="h-5 w-5" />
+                    </div>
+                    <div className="text-sm font-semibold leading-tight">{s.name}</div>
+                    {s.live > 0 && <LiveDot count={s.live} />}
+                  </Link>
+                );
+              })}
             </div>
           </section>
 
           {rest.length > 0 && (
-            <section className="mx-auto mt-7 max-w-3xl px-5">
+            <section className="mt-8 px-5">
               <h2 className="text-sm font-bold">Explore other topics</h2>
               <div className="mt-3 grid grid-cols-2 gap-3">
                 {rest.map((s) => {
@@ -212,21 +194,15 @@ function Home() {
                       key={s.slug}
                       to="/subject/$subject"
                       params={{ subject: s.slug }}
-                      className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 transition hover:border-primary/40 hover:shadow-md"
+                      className="relative flex items-center gap-3 rounded-xl bg-card p-4 shadow-card hover:shadow-elevated"
                     >
                       <div
                         className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${className}`}
                       >
                         <Icon className="h-5 w-5" />
                       </div>
-                      <div className="min-w-0">
-                        <div className="truncate text-sm font-semibold">{s.name}</div>
-                        {s.live > 0 && (
-                          <div className="mt-0.5 text-[11px] font-medium text-success">
-                            {s.live} online
-                          </div>
-                        )}
-                      </div>
+                      <div className="min-w-0 truncate text-sm font-semibold">{s.name}</div>
+                      {s.live > 0 && <LiveDot count={s.live} />}
                     </Link>
                   );
                 })}
@@ -238,5 +214,16 @@ function Home() {
 
       <BottomNav />
     </div>
+  );
+}
+
+/** Small corner badge so a busy subject stands out without adding a row of
+ * text under every card. */
+function LiveDot({ count }: { count: number }) {
+  return (
+    <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-success/10 px-1.5 py-0.5 text-[10px] font-bold text-success">
+      <span className="h-1.5 w-1.5 rounded-full bg-success" />
+      {count}
+    </span>
   );
 }
