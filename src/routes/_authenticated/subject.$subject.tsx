@@ -156,63 +156,76 @@ function SubjectPage() {
         </div>
 
         {loading ? (
-          <div className="mt-10 text-center text-sm text-muted-foreground">Loading classrooms…</div>
+          <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="h-44 animate-pulse rounded-xl border border-border bg-card" />
+            ))}
+          </div>
         ) : visible.length === 0 ? (
-          <div className="mt-10 rounded-2xl bg-card p-8 text-center text-sm text-muted-foreground shadow-card">
-            No classrooms configured for this subject yet.
+          <div className="mt-8 rounded-xl border border-dashed border-border p-10 text-center">
+            <p className="text-sm font-medium">No classrooms yet</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Rooms for this subject haven't been set up.
+            </p>
           </div>
         ) : (
-          <div className="mt-6 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+          <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {visible.map((c, i) => {
               const full = c.used >= c.capacity;
-              const pct = (c.used / c.capacity) * 100;
-              const barColor = full ? "bg-danger" : c.used > 20 ? "bg-warning" : "bg-success";
+              const pct = Math.min(100, (c.used / c.capacity) * 100);
+              const barColor = full
+                ? "bg-danger"
+                : c.used > c.capacity * 0.7
+                  ? "bg-warning"
+                  : "bg-success";
               return (
-                <div key={c.id} className="rounded-2xl bg-card p-5 shadow-card transition">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-base font-bold">Classroom {i + 1}</h3>
-                      {c.is_verified && (
-                        <span className="rounded-md bg-success/10 px-2 py-0.5 text-[10px] font-bold text-success">
-                          VERIFIED
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    Auto-matched study room ·{" "}
-                    <span className="font-semibold text-foreground">peer study</span>
-                  </p>
-                  <div className="mt-4">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-medium">
-                        {c.used} / {c.capacity} live participants
+                <div
+                  key={c.id}
+                  className="flex flex-col rounded-xl border border-border bg-card p-5 transition hover:border-primary/40 hover:shadow-md"
+                >
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-bold">Room {i + 1}</h3>
+                    {c.is_verified && (
+                      <span className="rounded bg-success/10 px-1.5 py-0.5 text-[10px] font-bold text-success">
+                        VERIFIED
                       </span>
-                      {full ? (
-                        <span className="rounded-md bg-danger/10 px-2 py-0.5 text-[10px] font-bold text-danger">
-                          CLASSROOM FULL
-                        </span>
-                      ) : (
-                        <span className="rounded-md bg-success/10 px-2 py-0.5 text-[10px] font-bold text-success">
-                          JOINABLE
-                        </span>
-                      )}
+                    )}
+                    <span
+                      className={`ml-auto rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                        full ? "bg-danger/10 text-danger" : "bg-success/10 text-success"
+                      }`}
+                    >
+                      {full ? "FULL" : "OPEN"}
+                    </span>
+                  </div>
+
+                  <div className="mt-5">
+                    <div className="flex items-baseline gap-1.5">
+                      <span className="text-2xl font-bold tabular-nums">{c.used}</span>
+                      <span className="text-sm text-muted-foreground">/ {c.capacity} students</span>
                     </div>
-                    <div className="mt-2 h-2 overflow-hidden rounded-full bg-secondary">
-                      <div className={`h-full ${barColor}`} style={{ width: `${pct}%` }} />
+                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-secondary">
+                      <div
+                        className={`h-full rounded-full transition-all ${barColor}`}
+                        style={{ width: `${pct}%` }}
+                      />
                     </div>
                   </div>
+
                   {full ? (
-                    <button className="mt-4 w-full rounded-lg bg-secondary py-2.5 text-sm font-semibold text-muted-foreground">
-                      Waiting List
+                    <button
+                      disabled
+                      className="mt-5 w-full cursor-not-allowed rounded-lg bg-secondary py-2.5 text-sm font-semibold text-muted-foreground"
+                    >
+                      Room full
                     </button>
                   ) : (
                     <Link
                       to="/room/$roomId"
                       params={{ roomId: c.id }}
-                      className="mt-4 block w-full rounded-lg bg-primary py-2.5 text-center text-sm font-semibold text-white hover:opacity-90"
+                      className="mt-5 block w-full rounded-lg bg-primary py-2.5 text-center text-sm font-semibold text-primary-foreground transition hover:bg-primary/90"
                     >
-                      Enter Classroom →
+                      Join room
                     </Link>
                   )}
                 </div>

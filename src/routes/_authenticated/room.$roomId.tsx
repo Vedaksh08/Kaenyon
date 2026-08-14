@@ -685,6 +685,14 @@ function Room() {
         .on("presence", { event: "sync" }, sync)
         .on("presence", { event: "join" }, sync)
         .on("presence", { event: "leave" }, sync)
+        // Someone announced they are leaving. Presence "leave" can lag by tens
+        // of seconds when a socket dies without a clean close, so drop them
+        // straight away and let the next sync reconcile.
+        .on("broadcast", { event: "left" }, ({ payload }) => {
+          const key = (payload as { session_key?: string })?.session_key;
+          if (!key) return;
+          setRemoteParticipants((prev) => prev.filter((p) => p.id !== key));
+        })
         .on("broadcast", { event: "help_offer" }, ({ payload }) => {
           const p = payload as { to: string; helper: string; doubt: string };
           if (p?.to !== uid) return;
@@ -729,27 +737,45 @@ function Room() {
     return () => {
       cancelled = true;
       if (channel) {
-        // untrack() before removeChannel: dropping the socket alone can leave
-        // us in everyone else's presence state until the server times the
-        // connection out, so people who left still appear in the grid.
+        // Broadcast our departure before untracking. untrack() is async and the
+        // socket often closes first, so peers would otherwise keep rendering a
+        // tile for us until the server timed the connection out — the "they
+        // only disappear when I refresh" symptom.
+        void channel.send({
+          type: "broadcast",
+          event: "left",
+          payload: { session_key: sessionKeyRef.current },
+        });
         void channel.untrack().then(() => supabase.removeChannel(channel!));
       }
       presenceChannelRef.current = null;
     };
   }, [roomId]);
 
-  // Closing the tab or hitting back never runs React cleanup, so untrack here
+  // Closing the tab or hitting back never runs React cleanup, so leave here
   // too — otherwise the room keeps showing people who are long gone.
   useEffect(() => {
     const leave = () => {
-      void presenceChannelRef.current?.untrack();
+      const ch = presenceChannelRef.current;
+      if (ch) {
+        void ch.send({
+          type: "broadcast",
+          event: "left",
+          payload: { session_key: sessionKeyRef.current },
+        });
+        void ch.untrack();
+      }
       if (userId) {
         void clearPresence(userId);
         void withdrawMyDoubts(userId);
       }
     };
+    // pagehide covers tab close and bfcache; visibilitychange catches mobile
+    // browsers that background the tab without ever firing pagehide.
     window.addEventListener("pagehide", leave);
-    return () => window.removeEventListener("pagehide", leave);
+    return () => {
+      window.removeEventListener("pagehide", leave);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, roomId]);
 
@@ -978,12 +1004,12 @@ function Room() {
               </p>
             </div>
           )}
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {visibleParticipants.map((p) => (
               <div
                 key={p.id}
-                className={`relative rounded-xl border bg-room-card p-4 ${
-                  p.you ? "border-primary" : "border-white/10"
+                className={`relative rounded-xl border bg-room-card p-3 transition ${
+                  p.you ? "border-primary/60" : "border-white/10"
                 }`}
               >
                 <button
@@ -1049,49 +1075,37 @@ function Room() {
                     </button>
                   </div>
                 )}
-                <div className="flex h-24 items-center justify-center">
+                <div className="flex aspect-[4/3] items-center justify-center overflow-hidden rounded-lg bg-black/40">
                   {p.you && cam ? (
                     <video
                       ref={videoRef}
                       autoPlay
                       muted
                       playsInline
-                      className="h-full w-full rounded-lg object-cover"
+                      className="h-full w-full scale-x-[-1] object-cover"
                     />
                   ) : !p.you && remoteStreams[p.id] ? (
                     <RemoteVideo stream={remoteStreams[p.id]} />
                   ) : !p.you && p.cam ? (
-                    <div className="flex h-full w-full items-center justify-center rounded-lg bg-gradient-to-br from-indigo-900 to-purple-900 text-xs text-white/70">
-                      Connecting camera…
-                    </div>
-                  ) : p.feed ? (
-                    <div className="flex h-full w-full items-center justify-center rounded-lg bg-gradient-to-br from-indigo-900 to-purple-900 text-xs text-white/70">
-                      ● Camera Feed
+                    <div className="flex flex-col items-center gap-2 text-white/50">
+                      <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white/70" />
+                      <span className="text-[11px]">Connecting…</span>
                     </div>
                   ) : (
                     <div
-                      className={`flex h-14 w-14 items-center justify-center rounded-full ${p.color} text-base font-bold`}
+                      className={`flex h-16 w-16 items-center justify-center rounded-full ${p.color} text-lg font-bold`}
                     >
                       {p.initials}
                     </div>
                   )}
                 </div>
-                <div className="mt-2 flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-1 truncate">
-                    <span className="truncate font-semibold">{p.name}</span>
-                  </div>
-                  <div className="flex items-center gap-1 text-white/60">
-                    {(p.you ? mic : p.mic) ? (
-                      <Mic className="h-3 w-3" />
-                    ) : (
-                      <MicOff className="h-3 w-3 text-danger" />
-                    )}
-                    {(p.you ? cam : p.cam) ? (
-                      <Video className="h-3 w-3" />
-                    ) : (
-                      <VideoOff className="h-3 w-3" />
-                    )}
-                  </div>
+                <div className="mt-2.5 flex items-center gap-2">
+                  <span className="min-w-0 flex-1 truncate text-sm font-semibold">{p.name}</span>
+                  {(p.you ? cam : p.cam) ? (
+                    <Video className="h-3.5 w-3.5 shrink-0 text-white/50" />
+                  ) : (
+                    <VideoOff className="h-3.5 w-3.5 shrink-0 text-danger" />
+                  )}
                 </div>
               </div>
             ))}
@@ -1142,6 +1156,15 @@ function Room() {
             </div>
 
             <div className="mt-3 max-h-[calc(100vh-340px)] space-y-3 overflow-y-auto pr-1">
+              {visibleDoubts.length === 0 && (
+                <div className="rounded-lg border border-dashed border-white/15 px-4 py-8 text-center">
+                  <MessageSquare className="mx-auto h-6 w-6 text-white/30" />
+                  <p className="mt-2.5 text-xs font-medium text-white/70">No doubts yet</p>
+                  <p className="mt-1 text-[11px] leading-relaxed text-white/40">
+                    Stuck on something? Type it below and someone here will help.
+                  </p>
+                </div>
+              )}
               {visibleDoubts.map((d) => (
                 <div key={d.id} className="relative rounded-lg border border-white/10 bg-room p-3">
                   <button

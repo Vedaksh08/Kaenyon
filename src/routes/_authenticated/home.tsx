@@ -1,44 +1,21 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
 import {
-  Bell,
-  Sparkles,
-  Laptop,
-  Bot,
   Binary,
-  Layers,
-  Terminal,
-  Code2,
-  ShieldCheck,
-  Calculator,
-  Atom,
-  FlaskConical,
-  Dna,
-  Microscope,
+  Bot,
   BookOpen,
-  Globe,
-  Landmark,
-  Scale,
-  Briefcase,
-  TrendingUp,
-  PieChart,
-  DollarSign,
-  Building2,
-  Stethoscope,
-  HeartPulse,
-  Pill,
-  Brain,
-  Cpu,
-  Wrench,
-  Zap,
-  Hammer,
-  Palette,
-  Music,
-  Camera,
-  Languages,
+  Code2,
+  Laptop,
+  Layers,
+  ShieldCheck,
+  Terminal,
   type LucideIcon,
 } from "lucide-react";
 import { usePlan } from "@/lib/plan-context";
 import { BottomNav } from "@/components/bottom-nav";
+import { KaenyonMark } from "@/components/brand";
+import { supabase } from "@/integrations/supabase/client";
+import { fetchMyStats, type MyStats } from "@/lib/social";
 
 export const Route = createFileRoute("/_authenticated/home")({
   head: () => ({
@@ -58,463 +35,197 @@ export const Route = createFileRoute("/_authenticated/home")({
   component: Home,
 });
 
-type Subject = { name: string; icon: LucideIcon; color: string; slug: string };
-
-type CourseCatalog = {
-  label: string;
-  recommended: Subject[];
-  other: Subject[];
-};
-
-const CATALOGS: Record<string, CourseCatalog> = {
-  cs: {
-    label: "CS ENG",
-    recommended: [
-      {
-        name: "Computer Science",
-        icon: Laptop,
-        color: "bg-foreground/90 text-background",
-        slug: "computer-science",
-      },
-      { name: "AI", icon: Bot, color: "bg-pro text-white", slug: "ai" },
-      {
-        name: "Data Structures",
-        icon: Binary,
-        color: "bg-teal-500 text-white",
-        slug: "data-structures",
-      },
-      {
-        name: "Software Eng",
-        icon: Layers,
-        color: "bg-success text-white",
-        slug: "software-engineering",
-      },
-      {
-        name: "Operating Systems",
-        icon: Terminal,
-        color: "bg-black text-white",
-        slug: "operating-systems",
-      },
-    ],
-    other: [
-      {
-        name: "Web Development",
-        icon: Code2,
-        color: "bg-orange-500 text-white",
-        slug: "web-development",
-      },
-      {
-        name: "Cyber Security",
-        icon: ShieldCheck,
-        color: "bg-danger text-white",
-        slug: "cyber-security",
-      },
-    ],
-  },
-  mechanical: {
-    label: "MECHANICAL ENG",
-    recommended: [
-      {
-        name: "Thermodynamics",
-        icon: Zap,
-        color: "bg-orange-500 text-white",
-        slug: "thermodynamics",
-      },
-      {
-        name: "Fluid Mechanics",
-        icon: Atom,
-        color: "bg-teal-500 text-white",
-        slug: "fluid-mechanics",
-      },
-      {
-        name: "Machine Design",
-        icon: Wrench,
-        color: "bg-foreground/90 text-background",
-        slug: "machine-design",
-      },
-      {
-        name: "Manufacturing",
-        icon: Hammer,
-        color: "bg-success text-white",
-        slug: "manufacturing",
-      },
-      { name: "Dynamics", icon: Cpu, color: "bg-pro text-white", slug: "dynamics" },
-    ],
-    other: [
-      {
-        name: "Material Science",
-        icon: Layers,
-        color: "bg-black text-white",
-        slug: "material-science",
-      },
-      { name: "CAD", icon: Palette, color: "bg-danger text-white", slug: "cad" },
-    ],
-  },
-  electrical: {
-    label: "ELECTRICAL ENG",
-    recommended: [
-      { name: "Circuits", icon: Zap, color: "bg-orange-500 text-white", slug: "circuits" },
-      {
-        name: "Power Systems",
-        icon: Cpu,
-        color: "bg-foreground/90 text-background",
-        slug: "power-systems",
-      },
-      { name: "Electronics", icon: Binary, color: "bg-teal-500 text-white", slug: "electronics" },
-      { name: "Signals", icon: Atom, color: "bg-pro text-white", slug: "signals-and-systems" },
-      {
-        name: "Control Systems",
-        icon: Terminal,
-        color: "bg-success text-white",
-        slug: "control-systems",
-      },
-    ],
-    other: [
-      {
-        name: "Microprocessors",
-        icon: Layers,
-        color: "bg-black text-white",
-        slug: "microprocessors",
-      },
-      { name: "Embedded", icon: Wrench, color: "bg-danger text-white", slug: "embedded-systems" },
-    ],
-  },
-  civil: {
-    label: "CIVIL ENG",
-    recommended: [
-      {
-        name: "Structural",
-        icon: Building2,
-        color: "bg-foreground/90 text-background",
-        slug: "structural-engineering",
-      },
-      {
-        name: "Geotechnical",
-        icon: Layers,
-        color: "bg-orange-500 text-white",
-        slug: "geotechnical",
-      },
-      { name: "Surveying", icon: Globe, color: "bg-teal-500 text-white", slug: "surveying" },
-      {
-        name: "Transportation",
-        icon: Wrench,
-        color: "bg-success text-white",
-        slug: "transportation",
-      },
-      { name: "Hydraulics", icon: Atom, color: "bg-pro text-white", slug: "hydraulics" },
-    ],
-    other: [
-      {
-        name: "Concrete Tech",
-        icon: Hammer,
-        color: "bg-black text-white",
-        slug: "concrete-technology",
-      },
-      {
-        name: "Env. Engineering",
-        icon: FlaskConical,
-        color: "bg-danger text-white",
-        slug: "environmental-engineering",
-      },
-    ],
-  },
-  medical: {
-    label: "MEDICAL",
-    recommended: [
-      { name: "Anatomy", icon: HeartPulse, color: "bg-danger text-white", slug: "anatomy" },
-      { name: "Physiology", icon: Stethoscope, color: "bg-pro text-white", slug: "physiology" },
-      {
-        name: "Biochemistry",
-        icon: FlaskConical,
-        color: "bg-teal-500 text-white",
-        slug: "biochemistry",
-      },
-      { name: "Pharmacology", icon: Pill, color: "bg-success text-white", slug: "pharmacology" },
-      {
-        name: "Pathology",
-        icon: Microscope,
-        color: "bg-foreground/90 text-background",
-        slug: "pathology",
-      },
-    ],
-    other: [
-      { name: "Microbiology", icon: Dna, color: "bg-black text-white", slug: "microbiology" },
-      { name: "Neurology", icon: Brain, color: "bg-orange-500 text-white", slug: "neurology" },
-    ],
-  },
-  business: {
-    label: "BUSINESS / MBA",
-    recommended: [
-      { name: "Marketing", icon: TrendingUp, color: "bg-pro text-white", slug: "marketing" },
-      { name: "Finance", icon: DollarSign, color: "bg-success text-white", slug: "finance" },
-      { name: "Accounting", icon: PieChart, color: "bg-teal-500 text-white", slug: "accounting" },
-      {
-        name: "Strategy",
-        icon: Briefcase,
-        color: "bg-foreground/90 text-background",
-        slug: "strategy",
-      },
-      { name: "Operations", icon: Layers, color: "bg-orange-500 text-white", slug: "operations" },
-    ],
-    other: [
-      { name: "Economics", icon: TrendingUp, color: "bg-black text-white", slug: "economics" },
-      {
-        name: "Org Behavior",
-        icon: Brain,
-        color: "bg-danger text-white",
-        slug: "organizational-behavior",
-      },
-    ],
-  },
-  commerce: {
-    label: "COMMERCE",
-    recommended: [
-      {
-        name: "Accountancy",
-        icon: PieChart,
-        color: "bg-foreground/90 text-background",
-        slug: "accountancy",
-      },
-      { name: "Economics", icon: TrendingUp, color: "bg-success text-white", slug: "economics" },
-      {
-        name: "Business Studies",
-        icon: Briefcase,
-        color: "bg-pro text-white",
-        slug: "business-studies",
-      },
-      { name: "Statistics", icon: Calculator, color: "bg-teal-500 text-white", slug: "statistics" },
-      { name: "Finance", icon: DollarSign, color: "bg-orange-500 text-white", slug: "finance" },
-    ],
-    other: [
-      { name: "Banking", icon: Landmark, color: "bg-black text-white", slug: "banking" },
-      { name: "Taxation", icon: Scale, color: "bg-danger text-white", slug: "taxation" },
-    ],
-  },
-  law: {
-    label: "LAW",
-    recommended: [
-      {
-        name: "Constitutional",
-        icon: Scale,
-        color: "bg-foreground/90 text-background",
-        slug: "constitutional-law",
-      },
-      {
-        name: "Criminal Law",
-        icon: ShieldCheck,
-        color: "bg-danger text-white",
-        slug: "criminal-law",
-      },
-      { name: "Contract Law", icon: BookOpen, color: "bg-pro text-white", slug: "contract-law" },
-      { name: "Torts", icon: Landmark, color: "bg-teal-500 text-white", slug: "torts" },
-      { name: "Jurisprudence", icon: Brain, color: "bg-success text-white", slug: "jurisprudence" },
-    ],
-    other: [
-      {
-        name: "Corporate Law",
-        icon: Building2,
-        color: "bg-black text-white",
-        slug: "corporate-law",
-      },
-      {
-        name: "IPR",
-        icon: Palette,
-        color: "bg-orange-500 text-white",
-        slug: "intellectual-property",
-      },
-    ],
-  },
-  arts: {
-    label: "ARTS / HUMANITIES",
-    recommended: [
-      {
-        name: "English Lit",
-        icon: BookOpen,
-        color: "bg-foreground/90 text-background",
-        slug: "english-literature",
-      },
-      { name: "History", icon: Landmark, color: "bg-orange-500 text-white", slug: "history" },
-      { name: "Psychology", icon: Brain, color: "bg-pro text-white", slug: "psychology" },
-      { name: "Sociology", icon: Globe, color: "bg-teal-500 text-white", slug: "sociology" },
-      { name: "Philosophy", icon: Scale, color: "bg-success text-white", slug: "philosophy" },
-    ],
-    other: [
-      { name: "Languages", icon: Languages, color: "bg-black text-white", slug: "languages" },
-      {
-        name: "Political Sci",
-        icon: Landmark,
-        color: "bg-danger text-white",
-        slug: "political-science",
-      },
-    ],
-  },
-  science: {
-    label: "SCIENCE",
-    recommended: [
-      { name: "Physics", icon: Atom, color: "bg-pro text-white", slug: "physics" },
-      { name: "Chemistry", icon: FlaskConical, color: "bg-success text-white", slug: "chemistry" },
-      {
-        name: "Mathematics",
-        icon: Calculator,
-        color: "bg-foreground/90 text-background",
-        slug: "mathematics",
-      },
-      { name: "Biology", icon: Dna, color: "bg-teal-500 text-white", slug: "biology" },
-      { name: "Statistics", icon: PieChart, color: "bg-orange-500 text-white", slug: "statistics" },
-    ],
-    other: [
-      { name: "Astronomy", icon: Globe, color: "bg-black text-white", slug: "astronomy" },
-      {
-        name: "Env. Science",
-        icon: Microscope,
-        color: "bg-danger text-white",
-        slug: "environmental-science",
-      },
-    ],
-  },
-  arch: {
-    label: "ARCHITECTURE / DESIGN",
-    recommended: [
-      { name: "Design Studio", icon: Palette, color: "bg-pro text-white", slug: "design-studio" },
-      {
-        name: "Building Tech",
-        icon: Building2,
-        color: "bg-foreground/90 text-background",
-        slug: "building-technology",
-      },
-      {
-        name: "History of Arch",
-        icon: Landmark,
-        color: "bg-orange-500 text-white",
-        slug: "history-of-architecture",
-      },
-      { name: "Drawing", icon: Camera, color: "bg-teal-500 text-white", slug: "drawing" },
-      {
-        name: "Urban Planning",
-        icon: Globe,
-        color: "bg-success text-white",
-        slug: "urban-planning",
-      },
-    ],
-    other: [
-      { name: "Visual Arts", icon: Music, color: "bg-black text-white", slug: "visual-arts" },
-      { name: "Materials", icon: Layers, color: "bg-danger text-white", slug: "materials" },
-    ],
-  },
-};
-
-const DEFAULT_CATALOG: CourseCatalog = CATALOGS.cs;
-
-function resolveCatalog(course?: string): CourseCatalog {
-  if (!course) return DEFAULT_CATALOG;
-  const c = course.toLowerCase();
-  const has = (...kw: string[]) => kw.some((k) => c.includes(k));
-  if (
-    has(
-      "cse",
-      "computer",
-      "software",
-      "it ",
-      "info tech",
-      "information tech",
-      "bca",
-      "mca",
-      "b.tech cs",
-      "b tech cs",
-    )
-  )
-    return CATALOGS.cs;
-  if (has("mech")) return CATALOGS.mechanical;
-  if (has("electr", "eee", "ece")) return CATALOGS.electrical;
-  if (has("civil")) return CATALOGS.civil;
-  if (has("mbbs", "med", "nurs", "pharm", "bds", "dental")) return CATALOGS.medical;
-  if (has("mba", "business", "bba", "management")) return CATALOGS.business;
-  if (has("commerce", "b.com", "bcom", "ca ", "cfa")) return CATALOGS.commerce;
-  if (has("law", "llb", "llm")) return CATALOGS.law;
-  if (
-    has(
-      "arts",
-      "humanities",
-      "ba ",
-      "b.a",
-      "psycholog",
-      "sociolog",
-      "history",
-      "english",
-      "literature",
-    )
-  )
-    return CATALOGS.arts;
-  if (has("b.sc", "bsc", "msc", "m.sc", "science", "physics", "chem", "math", "bio"))
-    return CATALOGS.science;
-  if (has("arch", "design", "b.des", "bdes")) return CATALOGS.arch;
-  return DEFAULT_CATALOG;
+interface SubjectRow {
+  slug: string;
+  name: string;
+  live: number;
 }
+
+// Presentation only. Subjects come from the database — an earlier version
+// hardcoded a 44-subject catalogue per course, which meant students on any
+// course but CS were shown links to subjects that no longer exist.
+const ICONS: Record<string, { icon: LucideIcon; className: string }> = {
+  "computer-science": { icon: Laptop, className: "bg-slate-900 text-white" },
+  ai: { icon: Bot, className: "bg-violet-500 text-white" },
+  "data-structures": { icon: Binary, className: "bg-teal-500 text-white" },
+  "software-engineering": { icon: Layers, className: "bg-emerald-500 text-white" },
+  "operating-systems": { icon: Terminal, className: "bg-zinc-800 text-white" },
+  "web-development": { icon: Code2, className: "bg-orange-500 text-white" },
+  "cyber-security": { icon: ShieldCheck, className: "bg-rose-500 text-white" },
+};
+
+const FALLBACK = { icon: BookOpen, className: "bg-primary text-primary-foreground" };
 
 function Home() {
   const { profile } = usePlan();
-  const displayName = profile?.name ? profile.name.split(" ")[0] : "there";
-  const course = profile?.course || "your studies";
-  const catalog = resolveCatalog(profile?.course);
+  const [subjects, setSubjects] = useState<SubjectRow[]>([]);
+  const [stats, setStats] = useState<MyStats | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const firstName = profile?.name?.trim().split(" ")[0] || "there";
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const load = async () => {
+      const [{ data: subjectRows }, { data: classrooms }] = await Promise.all([
+        supabase.from("subjects").select("slug, name").order("name"),
+        supabase.from("classrooms").select("id, subject_slug"),
+      ]);
+      if (cancelled) return;
+
+      // One presence query for the whole page rather than per subject.
+      const since = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+      const { data: presence } = await supabase
+        .from("user_presence")
+        .select("classroom_id")
+        .gt("last_seen", since);
+      if (cancelled) return;
+
+      const roomToSubject = new Map((classrooms ?? []).map((c) => [c.id, c.subject_slug]));
+      const liveBySubject = new Map<string, number>();
+      for (const p of presence ?? []) {
+        const slug = p.classroom_id ? roomToSubject.get(p.classroom_id) : null;
+        if (slug) liveBySubject.set(slug, (liveBySubject.get(slug) ?? 0) + 1);
+      }
+
+      setSubjects(
+        (subjectRows ?? []).map((s) => ({
+          slug: s.slug,
+          name: s.name,
+          live: liveBySubject.get(s.slug) ?? 0,
+        })),
+      );
+      setLoading(false);
+    };
+
+    void load();
+    const timer = window.setInterval(() => void load(), 20_000);
+
+    void (async () => {
+      const { data } = await supabase.auth.getUser();
+      if (!data.user || cancelled) return;
+      try {
+        const s = await fetchMyStats(data.user.id);
+        if (!cancelled) setStats(s);
+      } catch {
+        /* stats are non-critical */
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  const totalLive = subjects.reduce((sum, s) => sum + s.live, 0);
 
   return (
     <div className="min-h-screen bg-background pb-24">
-      <header className="px-5 pt-8">
-        <div className="flex items-start justify-between">
-          <div>
-            <h1 className="text-2xl font-extrabold text-primary">Hey, {displayName}! 👋</h1>
-            <p className="mt-1 text-sm text-muted-foreground">Ready to master {course} today?</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="relative">
-              <Bell className="h-5 w-5 text-foreground" />
-              <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-danger" />
+      <header className="border-b border-border bg-card">
+        <div className="mx-auto max-w-3xl px-5 py-5">
+          <div className="flex items-center justify-between gap-4">
+            <div className="min-w-0">
+              <h1 className="truncate text-xl font-bold">Hey, {firstName}</h1>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                {totalLive > 0 ? (
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="relative flex h-2 w-2">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-75" />
+                      <span className="relative inline-flex h-2 w-2 rounded-full bg-success" />
+                    </span>
+                    {totalLive} studying right now
+                  </span>
+                ) : (
+                  "Pick a subject to get started"
+                )}
+              </p>
             </div>
+            <KaenyonMark className="h-9 w-9 shrink-0" />
           </div>
+
+          {stats && (
+            <div className="mt-5 grid grid-cols-3 gap-3">
+              <Stat value={stats.doubts_asked} label="Asked" />
+              <Stat value={stats.answers_given} label="Solved" />
+              <Stat
+                value={stats.avg_rating > 0 ? stats.avg_rating.toFixed(1) : "—"}
+                label="Rating"
+              />
+            </div>
+          )}
         </div>
       </header>
 
-      <section className="mt-8">
-        <h2 className="px-5 text-sm font-bold text-foreground flex items-center gap-1">
-          <Sparkles className="h-4 w-4 text-primary" /> Recommended for {catalog.label}
-        </h2>
-        <div className="mt-3 flex gap-3 overflow-x-auto px-5 pb-2">
-          {catalog.recommended.map((s) => (
-            <Link
-              key={s.slug}
-              to="/subject/$subject"
-              params={{ subject: s.slug }}
-              className="flex w-32 shrink-0 flex-col items-start gap-3 rounded-xl bg-card p-4 shadow-card hover:shadow-elevated"
-            >
-              <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${s.color}`}>
-                <s.icon className="h-5 w-5" />
-              </div>
-              <div className="text-sm font-semibold leading-tight">{s.name}</div>
-            </Link>
-          ))}
-        </div>
-      </section>
+      <main className="mx-auto max-w-3xl px-5 py-6">
+        <h2 className="text-sm font-bold">Subjects</h2>
 
-      <section className="mt-8 px-5">
-        <h2 className="text-sm font-bold">Explore other topics</h2>
-        <div className="mt-3 grid grid-cols-2 gap-3">
-          {catalog.other.map((s) => (
-            <Link
-              key={s.slug}
-              to="/subject/$subject"
-              params={{ subject: s.slug }}
-              className="flex items-center gap-3 rounded-xl bg-card p-4 shadow-card hover:shadow-elevated"
-            >
-              <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${s.color}`}>
-                <s.icon className="h-5 w-5" />
-              </div>
-              <div className="text-sm font-semibold">{s.name}</div>
-            </Link>
-          ))}
-        </div>
-      </section>
+        {loading ? (
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            {[0, 1, 2, 3].map((i) => (
+              <div
+                key={i}
+                className="h-[76px] animate-pulse rounded-xl border border-border bg-card"
+              />
+            ))}
+          </div>
+        ) : subjects.length === 0 ? (
+          <div className="mt-4 rounded-xl border border-dashed border-border p-10 text-center">
+            <BookOpen className="mx-auto h-8 w-8 text-muted-foreground" />
+            <p className="mt-3 text-sm font-medium">No subjects yet</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Subjects will appear here once they're added.
+            </p>
+          </div>
+        ) : (
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            {subjects.map((s) => {
+              const { icon: Icon, className } = ICONS[s.slug] ?? FALLBACK;
+              return (
+                <Link
+                  key={s.slug}
+                  to="/subject/$subject"
+                  params={{ subject: s.slug }}
+                  className="group flex items-center gap-3.5 rounded-xl border border-border bg-card p-4 transition hover:border-primary/40 hover:shadow-md"
+                >
+                  <div
+                    className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg ${className}`}
+                  >
+                    <Icon className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate font-semibold">{s.name}</div>
+                    <div className="mt-0.5 text-xs text-muted-foreground">
+                      {s.live > 0 ? (
+                        <span className="inline-flex items-center gap-1.5 font-medium text-success">
+                          <span className="h-1.5 w-1.5 rounded-full bg-success" />
+                          {s.live} online
+                        </span>
+                      ) : (
+                        "No one online"
+                      )}
+                    </div>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        )}
+      </main>
 
       <BottomNav />
+    </div>
+  );
+}
+
+function Stat({ value, label }: { value: number | string; label: string }) {
+  return (
+    <div className="rounded-lg border border-border bg-background px-3 py-2.5 text-center">
+      <div className="text-lg font-bold leading-none">{value}</div>
+      <div className="mt-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+        {label}
+      </div>
     </div>
   );
 }
