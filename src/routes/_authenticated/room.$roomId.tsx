@@ -13,6 +13,8 @@ import {
   UserPlus,
   VolumeX,
   Check,
+  MonitorUp,
+  PenLine,
 } from "lucide-react";
 import { toast } from "sonner";
 import { usePlan } from "@/lib/plan-context";
@@ -21,6 +23,7 @@ import { RatingModal } from "@/components/rating-modal";
 import { supabase } from "@/integrations/supabase/client";
 import { sendFriendRequest, markPresence, clearPresence } from "@/lib/social";
 import { useWebrtcMesh } from "@/lib/use-webrtc-mesh";
+import { Whiteboard } from "@/components/whiteboard";
 
 /**
  * `audible` is off by default: the main classroom is silent by design, so
@@ -274,8 +277,27 @@ function Room() {
     let strikes = 0;
     let kicked = false;
 
-    const scoreFrame = async (v: HTMLVideoElement) => {
-      const preds = await model!.classify(v, 5);
+    // Sample from our own detached <video> rather than whichever element
+    // happens to be on screen. The visible tile unmounts during a private
+    // session and videoRef can be null, which silently stopped moderation
+    // exactly where it still needs to run.
+    const probe = document.createElement("video");
+    probe.muted = true;
+    probe.playsInline = true;
+    probe.autoplay = true;
+    let probeStream: MediaStream | null = null;
+
+    const attachProbe = () => {
+      const stream = streamRef.current;
+      if (!stream || probeStream === stream) return;
+      probeStream = stream;
+      probe.srcObject = stream;
+      const p = probe.play?.();
+      if (p && typeof p.catch === "function") p.catch(() => {});
+    };
+
+    const scoreFrame = async () => {
+      const preds = await model!.classify(probe, 5);
       // "Sexy" is excluded on purpose — see note above.
       return preds
         .filter((p) => p.className === "Porn" || p.className === "Hentai")
@@ -284,12 +306,13 @@ function Room() {
 
     const tick = async () => {
       if (cancelled || kicked || !model) return;
-      const v = videoRef.current;
       const stream = streamRef.current;
       const camOn = !!stream?.getVideoTracks().some((t) => t.enabled && t.readyState === "live");
-      if (!camOn || !v || v.readyState < 2 || v.videoWidth === 0) return;
+      if (!camOn) return;
+      attachProbe();
+      if (probe.readyState < 2 || probe.videoWidth === 0) return;
       try {
-        const unsafe = await scoreFrame(v);
+        const unsafe = await scoreFrame();
         if (unsafe < THRESHOLD) {
           if (strikes > 0) setNsfwWarn(false);
           strikes = 0;
@@ -299,8 +322,8 @@ function Room() {
         // Second look before counting it — motion blur and odd frames produce
         // one-off false positives.
         await new Promise((r) => setTimeout(r, 400));
-        if (cancelled || !videoRef.current) return;
-        if ((await scoreFrame(videoRef.current)) < THRESHOLD) return;
+        if (cancelled) return;
+        if ((await scoreFrame()) < THRESHOLD) return;
 
         strikes += 1;
         setNsfwWarn(true);
@@ -331,14 +354,18 @@ function Room() {
     timer = window.setTimeout(() => {
       void (async () => {
         try {
+          const tf = await import("@tensorflow/tfjs");
+          await tf.ready();
           const nsfw = await import("nsfwjs");
-          await import("@tensorflow/tfjs");
           if (cancelled) return;
+          // Pinned model: nsfw.load() with no argument fetches from a Google
+          // CDN that is blocked on some networks, and the failure is silent.
           model = await nsfw.load();
           if (cancelled) return;
+          console.info("[moderation] camera moderation active");
           interval = window.setInterval(tick, SAMPLE_MS);
         } catch (err) {
-          console.error("NSFW model failed to load", err);
+          console.error("[moderation] model failed to load — camera is UNMODERATED", err);
         }
       })();
     }, LOAD_DELAY_MS);
@@ -347,6 +374,7 @@ function Room() {
       cancelled = true;
       if (timer) window.clearTimeout(timer);
       if (interval) window.clearInterval(interval);
+      probe.srcObject = null;
     };
   }, [nav]);
 
@@ -512,7 +540,7 @@ function Room() {
 
   // Live peer-to-peer video with everyone else in the classroom.
   const peerIds = useMemo(() => remoteParticipants.map((p) => p.id), [remoteParticipants]);
-  const remoteStreams = useWebrtcMesh({
+  const { remoteStreams } = useWebrtcMesh({
     roomId,
     userId: userId ? sessionKeyRef.current : null,
     peerIds,
@@ -1009,6 +1037,9 @@ function Room() {
         mic={mic}
         onToggleCam={() => void toggleCam()}
         onToggleMic={toggleMic}
+        // pendingRatee is set only for the student who raised the doubt, which
+        // is exactly who should be able to mute people here.
+        isModerator={pendingRatee !== null}
         onReturn={() => {
           setPrivateSession(false);
           setInvitedIds([]);
@@ -1579,6 +1610,7 @@ function PrivateSession({
   mic,
   onToggleCam,
   onToggleMic,
+  isModerator,
 }: {
   youName: string;
   invitees: Participant[];
@@ -1592,9 +1624,20 @@ function PrivateSession({
   mic: boolean;
   onToggleCam: () => void;
   onToggleMic: () => void;
+  /** Only the student who raised the doubt can mute others. */
+  isModerator: boolean;
 }) {
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [panel, setPanel] = useState<"none" | "board">("none");
+  const [sharing, setSharing] = useState(false);
+  const [mutedByMod, setMutedByMod] = useState(false);
+  // Who the moderator has explicitly silenced. A hover-mute persists until they
+  // unmute; "mute all" is a one-shot request that people can undo themselves.
+  const [forceMuted, setForceMuted] = useState<string[]>([]);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const screenStreamRef = useRef<MediaStream | null>(null);
+  // Screen video + microphone audio, rebuilt whenever either side changes.
+  const [shareStream, setShareStream] = useState<MediaStream | null>(null);
 
   const all = invitees;
 
@@ -1606,15 +1649,96 @@ function PrivateSession({
   // so nobody could see or hear anyone — and grabbing the camera a second time
   // knocked out the classroom's own stream on the way back.
   const peerIds = useMemo(() => all.map((p) => p.id), [all]);
-  const privateStreams = useWebrtcMesh({
+  const { remoteStreams: privateStreams, channel } = useWebrtcMesh({
     roomId: `${roomId}:private`,
     userId: sessionKey,
     peerIds,
-    localStream,
+    // Screen share replaces the camera track for everyone while it is running,
+    // but getDisplayMedia gives us no microphone — carry the camera stream's
+    // audio across or sharing would silently mute the presenter.
+    localStream: shareStream ?? localStream,
   });
 
   useEffect(() => {
     toast("Private session started — mic and camera are on");
+  }, []);
+
+  // Moderator commands. Only the doubt's author is moderator, so everyone else
+  // just listens.
+  useEffect(() => {
+    if (!channel) return;
+    const onMute = ({ payload }: { payload: unknown }) => {
+      const p = payload as { target?: string; all?: boolean; muted?: boolean };
+      const forMe = p.all || p.target === sessionKey;
+      if (!forMe) return;
+      if (p.all) {
+        // Temporary: mute now, but leave them free to unmute themselves.
+        if (mic) onToggleMic();
+        toast("Muted by the moderator");
+        return;
+      }
+      setMutedByMod(!!p.muted);
+      if (p.muted && mic) onToggleMic();
+      toast(p.muted ? "The moderator muted you" : "The moderator unmuted you");
+    };
+    channel.on("broadcast", { event: "mod_mute" }, onMute);
+  }, [channel, mic, onToggleMic, sessionKey]);
+
+  const muteAll = () => {
+    void channel?.send({ type: "broadcast", event: "mod_mute", payload: { all: true } });
+    toast.success("Everyone muted");
+  };
+
+  const toggleForceMute = (peerId: string) => {
+    const nowMuted = !forceMuted.includes(peerId);
+    setForceMuted((prev) => (nowMuted ? [...prev, peerId] : prev.filter((id) => id !== peerId)));
+    void channel?.send({
+      type: "broadcast",
+      event: "mod_mute",
+      payload: { target: peerId, muted: nowMuted },
+    });
+  };
+
+  const stopShare = () => {
+    screenStreamRef.current?.getTracks().forEach((t) => t.stop());
+    screenStreamRef.current = null;
+    setShareStream(null);
+    setSharing(false);
+  };
+
+  const toggleShare = async () => {
+    if (sharing) {
+      stopShare();
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+      // Clicking the browser's own "Stop sharing" bar has to put the camera
+      // back, not leave a frozen frame.
+      stream.getVideoTracks()[0]?.addEventListener("ended", stopShare);
+      screenStreamRef.current = stream;
+      setSharing(true);
+    } catch {
+      /* the user dismissed the picker */
+    }
+  };
+
+  // Screen video + live mic audio. Rebuilt when the mic is toggled mid-share so
+  // the presenter does not go silent.
+  useEffect(() => {
+    if (!sharing || !screenStreamRef.current) {
+      setShareStream(null);
+      return;
+    }
+    const combined = new MediaStream(screenStreamRef.current.getVideoTracks());
+    localStream?.getAudioTracks().forEach((t) => combined.addTrack(t));
+    setShareStream(combined);
+  }, [sharing, localStream]);
+
+  useEffect(() => {
+    return () => {
+      screenStreamRef.current?.getTracks().forEach((t) => t.stop());
+    };
   }, []);
 
   // Bind the shared classroom stream to our self-view. Callback ref so it
@@ -1645,10 +1769,38 @@ function PrivateSession({
           <span className="h-2 w-2 animate-pulse rounded-full bg-white" /> PRIVATE SESSION (A/V)
         </span>
         <span className="text-xs text-white/60">{totalSeats}/7 in room</span>
+        {isModerator && (
+          <span className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] font-bold text-white/70">
+            MODERATOR
+          </span>
+        )}
         <div className="ml-auto flex items-center gap-2">
-          <button className="inline-flex items-center gap-1 rounded-lg bg-white/10 px-3 py-1.5 text-xs font-semibold hover:bg-white/20">
-            <VolumeX className="h-4 w-4" /> Mute All
+          <button
+            onClick={() => setPanel(panel === "board" ? "none" : "board")}
+            className={`inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold ${
+              panel === "board"
+                ? "bg-primary text-primary-foreground"
+                : "bg-white/10 hover:bg-white/20"
+            }`}
+          >
+            <PenLine className="h-4 w-4" /> Whiteboard
           </button>
+          <button
+            onClick={() => void toggleShare()}
+            className={`inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold ${
+              sharing ? "bg-primary text-primary-foreground" : "bg-white/10 hover:bg-white/20"
+            }`}
+          >
+            <MonitorUp className="h-4 w-4" /> {sharing ? "Stop share" : "Share screen"}
+          </button>
+          {isModerator && (
+            <button
+              onClick={muteAll}
+              className="inline-flex items-center gap-1 rounded-lg bg-white/10 px-3 py-1.5 text-xs font-semibold hover:bg-white/20"
+            >
+              <VolumeX className="h-4 w-4" /> Mute All
+            </button>
+          )}
           <button
             onClick={() => setInviteOpen(true)}
             disabled={remainingSlots === 0}
@@ -1666,70 +1818,121 @@ function PrivateSession({
         </div>
       </header>
 
-      <main className="mx-auto grid max-w-4xl gap-4 p-8 sm:grid-cols-2 lg:grid-cols-3">
-        <div className="rounded-2xl border border-primary bg-room-card p-4 text-center">
-          <div className="flex h-40 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-indigo-900 to-purple-900">
-            {cam ? (
-              <video
-                ref={attachSelfVideo}
-                autoPlay
-                muted
-                playsInline
-                className="h-full w-full scale-x-[-1] object-cover"
-              />
-            ) : (
-              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary text-2xl font-bold">
-                {youName.charAt(0).toUpperCase()}
-              </div>
-            )}
+      <main
+        className={`mx-auto max-w-6xl gap-4 p-6 ${panel === "board" ? "grid lg:grid-cols-[1fr_380px]" : ""}`}
+      >
+        {panel === "board" && (
+          <div className="order-2 h-[60vh] overflow-hidden rounded-2xl border border-white/10 bg-room-card lg:order-1 lg:h-[calc(100vh-190px)]">
+            <Whiteboard channel={channel} />
           </div>
-          <div className="mt-3 flex items-center justify-center gap-2 text-sm font-semibold">
-            {youName}
-            <span className="rounded bg-primary px-1.5 py-0.5 text-[10px] font-bold">MOD</span>
-            {mic ? (
-              <Mic className="h-3 w-3 text-success" />
-            ) : (
-              <MicOff className="h-3 w-3 text-danger" />
-            )}
-            {cam ? (
-              <Video className="h-3 w-3 text-success" />
-            ) : (
-              <VideoOff className="h-3 w-3 text-danger" />
-            )}
-          </div>
-        </div>
-        {all.map((p) => (
-          <div
-            key={p.id}
-            className="rounded-2xl border border-white/10 bg-room-card p-4 text-center"
-          >
+        )}
+
+        <div
+          className={`order-1 grid gap-4 lg:order-2 ${
+            panel === "board" ? "grid-cols-2 content-start" : "sm:grid-cols-2 lg:grid-cols-3"
+          }`}
+        >
+          <div className="rounded-2xl border border-primary bg-room-card p-4 text-center">
             <div className="flex h-40 items-center justify-center overflow-hidden rounded-xl bg-black/40">
-              {privateStreams[p.id] ? (
-                // Audible here, unlike the classroom grid: a private session is
-                // the one place people are meant to talk.
-                <RemoteVideo stream={privateStreams[p.id]} audible />
+              {sharing ? (
+                <div className="flex flex-col items-center gap-2 text-white/60">
+                  <MonitorUp className="h-6 w-6" />
+                  <span className="text-[11px]">Sharing your screen</span>
+                </div>
+              ) : cam ? (
+                <video
+                  ref={attachSelfVideo}
+                  autoPlay
+                  muted
+                  playsInline
+                  className="h-full w-full scale-x-[-1] object-cover"
+                />
               ) : (
-                <div className="flex flex-col items-center gap-2 text-white/50">
-                  <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white/70" />
-                  <span className="text-[11px]">Connecting…</span>
+                <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary text-2xl font-bold">
+                  {youName.charAt(0).toUpperCase()}
                 </div>
               )}
             </div>
             <div className="mt-3 flex items-center justify-center gap-2 text-sm font-semibold">
-              {p.name}
+              <span className="truncate">{youName}</span>
+              {isModerator && (
+                <span className="rounded bg-primary px-1.5 py-0.5 text-[10px] font-bold">MOD</span>
+              )}
+              {mic ? (
+                <Mic className="h-3 w-3 text-success" />
+              ) : (
+                <MicOff className="h-3 w-3 text-danger" />
+              )}
             </div>
           </div>
-        ))}
+
+          {all.map((p) => {
+            const silenced = forceMuted.includes(p.id);
+            return (
+              <div
+                key={p.id}
+                className="group relative rounded-2xl border border-white/10 bg-room-card p-4 text-center"
+              >
+                <div className="flex h-40 items-center justify-center overflow-hidden rounded-xl bg-black/40">
+                  {privateStreams[p.id] ? (
+                    // Audible here, unlike the classroom grid: a private session
+                    // is the one place people are meant to talk. A moderator
+                    // mute is enforced locally too, so it takes effect even if
+                    // the other end ignores the request.
+                    <RemoteVideo stream={privateStreams[p.id]} audible={!silenced} />
+                  ) : (
+                    <div className="flex flex-col items-center gap-2 text-white/50">
+                      <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white/70" />
+                      <span className="text-[11px]">Connecting…</span>
+                    </div>
+                  )}
+                </div>
+
+                {isModerator && (
+                  <button
+                    onClick={() => toggleForceMute(p.id)}
+                    title={silenced ? `Unmute ${p.name}` : `Mute ${p.name}`}
+                    className={`absolute right-3 top-3 rounded-full p-2 transition ${
+                      silenced
+                        ? "bg-danger text-white"
+                        : "bg-black/60 text-white opacity-0 group-hover:opacity-100"
+                    }`}
+                  >
+                    {silenced ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+                  </button>
+                )}
+
+                <div className="mt-3 flex items-center justify-center gap-2 text-sm font-semibold">
+                  <span className="truncate">{p.name}</span>
+                  {silenced && <MicOff className="h-3 w-3 shrink-0 text-danger" />}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </main>
 
       {/* Bottom controls */}
       <div className="fixed bottom-6 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-full bg-room-card/95 px-3 py-2 shadow-elevated backdrop-blur">
         <CtlBtn
-          title={mic ? "Mute mic" : "Unmute mic"}
-          onClick={onToggleMic}
-          className={mic ? "bg-success/20 text-success" : "bg-danger/20 text-danger"}
+          title={mutedByMod ? "The moderator has muted you" : mic ? "Mute mic" : "Unmute mic"}
+          onClick={() => {
+            // A moderator mute is not something you can undo yourself.
+            if (mutedByMod) {
+              toast("The moderator has muted you.");
+              return;
+            }
+            onToggleMic();
+          }}
+          className={
+            mutedByMod
+              ? "cursor-not-allowed bg-danger/20 text-danger opacity-60"
+              : mic
+                ? "bg-success/20 text-success"
+                : "bg-danger/20 text-danger"
+          }
         >
-          {mic ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}
+          {mic && !mutedByMod ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}
         </CtlBtn>
         <CtlBtn
           title={cam ? "Turn camera off" : "Turn camera on"}

@@ -72,6 +72,9 @@ export function useWebrtcMesh(opts: {
 }) {
   const { roomId, userId, peerIds, localStream } = opts;
   const [remoteStreams, setRemoteStreams] = useState<Record<string, MediaStream>>({});
+  // Exposed so callers can piggyback their own broadcasts (whiteboard strokes,
+  // moderator mutes) on the channel that already exists for this session.
+  const [channel, setChannel] = useState<ReturnType<typeof supabase.channel> | null>(null);
 
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const peersRef = useRef<Map<string, Peer>>(new Map());
@@ -357,6 +360,7 @@ export function useWebrtcMesh(opts: {
       .subscribe((status) => {
         if (status === "SUBSCRIBED") {
           subscribedRef.current = true;
+          setChannel(channel);
           announce();
           // Re-announce for a while: presence and the RTC channel come up
           // independently, so a peer may not have been listening yet.
@@ -386,6 +390,7 @@ export function useWebrtcMesh(opts: {
       peersRef.current.clear();
       pendingIceRef.current.clear();
       setRemoteStreams({});
+      setChannel(null);
       supabase.removeChannel(channel);
       channelRef.current = null;
     };
@@ -458,5 +463,5 @@ export function useWebrtcMesh(opts: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [peerIds.join(","), remoteStreams]);
 
-  return remoteStreams;
+  return { remoteStreams, channel };
 }

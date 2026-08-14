@@ -99,11 +99,22 @@ function Home() {
     };
 
     void load();
-    const timer = window.setInterval(() => void load(), 20_000);
+
+    // Live counts rather than waiting on the poll. The interval stays as a
+    // backstop for a dropped socket, but at a much lower rate.
+    const channel = supabase
+      .channel("home:presence")
+      .on("postgres_changes", { event: "*", schema: "public", table: "user_presence" }, () => {
+        void load();
+      })
+      .subscribe();
+
+    const timer = window.setInterval(() => void load(), 60_000);
 
     return () => {
       cancelled = true;
       window.clearInterval(timer);
+      void supabase.removeChannel(channel);
     };
   }, []);
 
