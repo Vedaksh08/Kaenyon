@@ -104,25 +104,30 @@ function Settings() {
   return (
     <div className="min-h-screen bg-background pb-24">
       <header className="border-b border-border bg-card">
-        <div className="mx-auto flex max-w-md items-center gap-2.5 px-5 py-4">
+        <div className="mx-auto flex max-w-3xl items-center gap-2.5 px-5 py-4">
           <KaenyonMark className="h-7 w-7" />
           <h1 className="text-lg font-bold">Profile</h1>
         </div>
       </header>
 
-      <div className="mx-auto max-w-md space-y-4 px-5 py-5">
+      <div className="mx-auto max-w-3xl space-y-4 px-5 py-5">
         {/* Identity card */}
         <section className="overflow-hidden rounded-2xl border border-border bg-card">
-          <div className="h-20 bg-gradient-to-br from-primary to-primary/60" />
-          <div className="px-5 pb-5">
-            <div className="-mt-10 flex h-20 w-20 items-center justify-center rounded-full border-4 border-card bg-primary text-2xl font-bold text-primary-foreground">
-              {displayName.charAt(0).toUpperCase()}
-            </div>
-            <div className="mt-3">
-              <div className="truncate text-lg font-bold">{displayName}</div>
-              <div className="truncate text-sm text-muted-foreground">{profile?.email}</div>
-              {(profile?.course || profile?.year) && (
-                <div className="mt-2 flex flex-wrap gap-1.5">
+          <div className="h-24 bg-gradient-to-br from-primary to-primary/60" />
+          <div className="px-6 pb-6">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+              <div className="flex items-end gap-4">
+                <div className="-mt-12 flex h-24 w-24 shrink-0 items-center justify-center rounded-full border-4 border-card bg-primary text-3xl font-bold text-primary-foreground">
+                  {displayName.charAt(0).toUpperCase()}
+                </div>
+                <div className="min-w-0 pb-1">
+                  <div className="truncate text-xl font-bold">{displayName}</div>
+                  <div className="truncate text-sm text-muted-foreground">{profile?.email}</div>
+                </div>
+              </div>
+              {(profile?.course || profile?.year || profile?.college) && (
+                <div className="flex flex-wrap gap-1.5 pb-1">
+                  {profile?.college && <Chip>{profile.college}</Chip>}
                   {profile?.course && <Chip>{profile.course}</Chip>}
                   {profile?.year && <Chip>{profile.year}</Chip>}
                 </div>
@@ -232,7 +237,7 @@ function Settings() {
         {/* Appearance */}
         <section className="rounded-xl border border-border bg-card p-5">
           <h2 className="text-sm font-bold">Appearance</h2>
-          <div className="mt-3 flex gap-2">
+          <div className="mt-3 flex gap-2 sm:max-w-xs">
             <ThemeButton
               active={theme === "light"}
               onClick={() => setTheme("light")}
@@ -250,7 +255,7 @@ function Settings() {
 
         <button
           onClick={signOut}
-          className="flex w-full items-center justify-center gap-2 rounded-xl border border-danger/30 bg-card py-3.5 text-sm font-semibold text-danger transition hover:bg-danger/10"
+          className="flex w-full items-center justify-center gap-2 rounded-xl border border-danger/30 bg-card py-3.5 text-sm font-semibold text-danger transition hover:bg-danger/10 sm:w-auto sm:px-6"
         >
           <LogOut className="h-4 w-4" /> Sign out
         </button>

@@ -22,7 +22,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { sendFriendRequest, markPresence, clearPresence } from "@/lib/social";
 import { useWebrtcMesh } from "@/lib/use-webrtc-mesh";
 
-function RemoteVideo({ stream }: { stream: MediaStream }) {
+/**
+ * `audible` is off by default: the main classroom is silent by design, so
+ * playing remote audio there would break the whole premise. Private sessions
+ * opt in.
+ */
+function RemoteVideo({ stream, audible = false }: { stream: MediaStream; audible?: boolean }) {
   const ref = useRef<HTMLVideoElement | null>(null);
   useEffect(() => {
     const v = ref.current;
@@ -31,7 +36,15 @@ function RemoteVideo({ stream }: { stream: MediaStream }) {
     const p = v.play?.();
     if (p && typeof p.catch === "function") p.catch(() => {});
   }, [stream]);
-  return <video ref={ref} autoPlay playsInline className="h-full w-full rounded-lg object-cover" />;
+  return (
+    <video
+      ref={ref}
+      autoPlay
+      playsInline
+      muted={!audible}
+      className="h-full w-full rounded-lg object-cover"
+    />
+  );
 }
 
 export const Route = createFileRoute("/_authenticated/room/$roomId")({
@@ -112,6 +125,9 @@ function Room() {
   const [privateSession, setPrivateSession] = useState(false);
   const [invitedIds, setInvitedIds] = useState<string[]>([]);
   const [inviteOpen, setInviteOpen] = useState(false);
+  // True when the invite modal was opened from your own doubt card, which makes
+  // you the asker and therefore the one who rates afterwards.
+  const [invitingForOwnDoubt, setInvitingForOwnDoubt] = useState(false);
   const [rating, setRating] = useState(false);
   const [ratingFor, setRatingFor] = useState<string | null>(null);
   // Only the person who raised the doubt rates, and only the helper gets rated.
@@ -128,6 +144,7 @@ function Room() {
   const [incomingInvite, setIncomingInvite] = useState<{
     hostUserId: string;
     hostName: string;
+    askerUserId: string;
   } | null>(null);
 
   const [blocked, setBlocked] = useState<string[]>([]);
@@ -441,10 +458,16 @@ function Room() {
     }
   };
 
+  // Talking is only permitted inside a private session; the classroom itself is
+  // silent by design.
   const toggleMic = () => {
+    if (!privateSession) {
+      toast("Mic is disabled in the classroom. Start a private session to talk.");
+      return;
+    }
     const next = !mic;
     setMic(next);
-    ensureStream({ audio: next, video: cam });
+    void ensureStream({ audio: next, video: cam });
   };
 
   const toggleCam = async () => {
@@ -469,15 +492,23 @@ function Room() {
   // Camera is manual only — user toggles via the control bar.
   const [streamTick, setStreamTick] = useState(0);
 
-  // Attach the stream whenever the <video> element mounts OR a new stream arrives.
-  useEffect(() => {
-    const v = videoRef.current;
+  // Callback ref rather than an effect: returning from a private session
+  // remounts this <video>, and an effect keyed on [cam, streamTick] would not
+  // re-run for a remount, leaving your own tile blank while everyone else could
+  // still see you.
+  const attachLocalVideo = (v: HTMLVideoElement | null) => {
+    videoRef.current = v;
     const s = streamRef.current;
-    if (!cam || !v || !s) return;
+    if (!v || !s) return;
     if (v.srcObject !== s) v.srcObject = s;
     const p = v.play?.();
     if (p && typeof p.catch === "function") p.catch(() => {});
-  }, [cam, streamTick]);
+  };
+
+  // Still needed for the case where the stream arrives after the element.
+  useEffect(() => {
+    attachLocalVideo(videoRef.current);
+  }, [cam, streamTick, localStream]);
 
   // Live peer-to-peer video with everyone else in the classroom.
   const peerIds = useMemo(() => remoteParticipants.map((p) => p.id), [remoteParticipants]);
@@ -700,9 +731,18 @@ function Room() {
         })
         // Someone invited us into their private session -> ask to accept/reject.
         .on("broadcast", { event: "private_invite" }, ({ payload }) => {
-          const p = payload as { to: string[]; hostUserId: string; hostName: string };
+          const p = payload as {
+            to: string[];
+            hostUserId: string;
+            hostName: string;
+            askerUserId?: string;
+          };
           if (!p?.to?.includes(uid)) return;
-          setIncomingInvite({ hostUserId: p.hostUserId, hostName: p.hostName });
+          setIncomingInvite({
+            hostUserId: p.hostUserId,
+            hostName: p.hostName,
+            askerUserId: p.askerUserId ?? p.hostUserId,
+          });
         })
         // An invitee answered our invite.
         .on("broadcast", { event: "private_invite_response" }, ({ payload }) => {
@@ -892,7 +932,11 @@ function Room() {
   };
 
   // Host: send invite requests. Nobody joins until they accept.
-  const sendInvites = async (ids: string[]) => {
+  //
+  // `askerUserId` travels with the invite so both sides agree on who raised the
+  // doubt. Either person can host — the helper by offering help, or the asker
+  // via "Start Private" — so host identity alone cannot decide who rates whom.
+  const sendInvites = async (ids: string[], askerUserId?: string) => {
     const targets = remoteParticipants
       .filter((p) => ids.includes(p.id))
       .map((p) => p.userId)
@@ -905,15 +949,24 @@ function Room() {
         to: targets,
         hostUserId: userId,
         hostName: profile?.name?.trim() || "A student",
+        askerUserId: askerUserId ?? userId,
       },
     });
     toast("Invite sent — waiting for them to accept.");
   };
 
-  const startPrivateWith = async (ids: string[]) => {
+  const startPrivateWith = async (ids: string[], askerUserId?: string) => {
     setInvitedIds([]);
     setPrivateSession(true);
-    await sendInvites(ids);
+    // We only rate someone else. If we are the asker, the ratee is whoever we
+    // invited; if we are the helper, we rate nobody.
+    if (askerUserId && userId && askerUserId === userId) {
+      const firstTarget = remoteParticipants.find((p) => ids.includes(p.id))?.userId;
+      setPendingRatee(firstTarget ?? null);
+    } else {
+      setPendingRatee(null);
+    }
+    await sendInvites(ids, askerUserId);
   };
 
   // Invitee: answer an incoming invite.
@@ -933,9 +986,10 @@ function Room() {
     });
     if (accepted) {
       setInvitedIds([invite.hostUserId]);
-      // The host offered help on our doubt, so they are the one we rate when
-      // the session ends.
-      setPendingRatee(invite.hostUserId);
+      // Only the student who raised the doubt rates, and they rate the helper.
+      // If we are the asker, that is the host who offered; otherwise we are the
+      // helper and rate nobody.
+      setPendingRatee(invite.askerUserId === userId ? invite.hostUserId : null);
       setPrivateSession(true);
     }
   };
@@ -948,9 +1002,21 @@ function Room() {
         youName={youName}
         invitees={invitees}
         roomParticipants={remoteParticipants.filter((p) => !blocked.includes(p.userId ?? p.id))}
+        roomId={roomId}
+        sessionKey={sessionKeyRef.current}
+        localStream={localStream}
+        cam={cam}
+        mic={mic}
+        onToggleCam={() => void toggleCam()}
+        onToggleMic={toggleMic}
         onReturn={() => {
           setPrivateSession(false);
           setInvitedIds([]);
+          // Talking is only allowed in private, so drop the mic on the way out.
+          if (mic) {
+            setMic(false);
+            void ensureStream({ audio: false, video: true });
+          }
           // Helpers have no pendingRatee, so they return to the room without
           // being asked to rate the person they just helped.
           if (pendingRatee) {
@@ -1078,7 +1144,7 @@ function Room() {
                 <div className="flex aspect-[4/3] items-center justify-center overflow-hidden rounded-lg bg-black/40">
                   {p.you && cam ? (
                     <video
-                      ref={videoRef}
+                      ref={attachLocalVideo}
                       autoPlay
                       muted
                       playsInline
@@ -1226,7 +1292,10 @@ function Room() {
 
                     {d.author_id === userId ? (
                       <button
-                        onClick={() => setInviteOpen(true)}
+                        onClick={() => {
+                          setInvitingForOwnDoubt(true);
+                          setInviteOpen(true);
+                        }}
                         className="rounded bg-primary px-2 py-1 text-[11px] font-semibold text-primary-foreground hover:bg-primary/90"
                       >
                         Start Private
@@ -1293,7 +1362,10 @@ function Room() {
         participants={invitableParticipants}
         onConfirm={(ids) => {
           setInviteOpen(false);
-          startPrivateWith(ids);
+          // Opened from your own doubt => you are the asker and will rate the
+          // helper you invite. Opened from the header => a plain invite.
+          startPrivateWith(ids, invitingForOwnDoubt ? (userId ?? undefined) : undefined);
+          setInvitingForOwnDoubt(false);
         }}
       />
       {incomingInvite && (
@@ -1500,95 +1572,65 @@ function PrivateSession({
   roomParticipants,
   onReturn,
   onInvite,
+  roomId,
+  sessionKey,
+  localStream,
+  cam,
+  mic,
+  onToggleCam,
+  onToggleMic,
 }: {
   youName: string;
   invitees: Participant[];
   roomParticipants: Participant[];
   onReturn: () => void;
   onInvite: (ids: string[]) => void;
+  roomId: string;
+  sessionKey: string;
+  localStream: MediaStream | null;
+  cam: boolean;
+  mic: boolean;
+  onToggleCam: () => void;
+  onToggleMic: () => void;
 }) {
-  const [mic, setMic] = useState(false);
-  const [cam, setCam] = useState(false);
-  const [streamTick, setStreamTick] = useState(0);
   const [inviteOpen, setInviteOpen] = useState(false);
-  const streamRef = useRef<MediaStream | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const gumTokenRef = useRef(0);
 
   const all = invitees;
 
   const totalSeats = 1 + all.length; // you + others
   const remainingSlots = Math.max(0, 7 - totalSeats);
 
-  const ensureStream = async (want: { audio: boolean; video: boolean }) => {
-    const token = ++gumTokenRef.current;
-    streamRef.current?.getTracks().forEach((t) => t.stop());
-    streamRef.current = null;
-    if (videoRef.current) videoRef.current.srcObject = null;
-    setStreamTick((n) => n + 1);
-    if (!want.audio && !want.video) return;
-    try {
-      if (!navigator.mediaDevices?.getUserMedia) {
-        toast.error("Camera is not available in this browser.");
-        setMic(false);
-        setCam(false);
-        return;
-      }
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: want.audio,
-        video: want.video ? { width: { ideal: 640 }, height: { ideal: 480 } } : false,
-      });
-      if (token !== gumTokenRef.current) {
-        stream.getTracks().forEach((t) => t.stop());
-        return;
-      }
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = want.video ? stream : null;
-        const p = videoRef.current.play?.();
-        if (p && typeof p.catch === "function") p.catch(() => {});
-      }
-      setStreamTick((n) => n + 1);
-    } catch (err: unknown) {
-      const e = err as { name?: string };
-      if (e.name === "NotAllowedError")
-        toast.error("Permission denied. Allow camera/mic in browser settings.");
-      else if (e.name === "NotFoundError") toast.error("No camera or microphone found.");
-      else if (e.name === "NotReadableError") toast.error("Device is in use by another app.");
-      else toast.error("Could not access camera/microphone.");
-      streamRef.current = null;
-      if (videoRef.current) videoRef.current.srcObject = null;
-      setMic(false);
-      setCam(false);
-    }
-  };
+  // Real audio+video with the people in this session. Previously this screen
+  // rendered static initials for everyone else and ran its own getUserMedia,
+  // so nobody could see or hear anyone — and grabbing the camera a second time
+  // knocked out the classroom's own stream on the way back.
+  const peerIds = useMemo(() => all.map((p) => p.id), [all]);
+  const privateStreams = useWebrtcMesh({
+    roomId: `${roomId}:private`,
+    userId: sessionKey,
+    peerIds,
+    localStream,
+  });
 
   useEffect(() => {
-    toast("Private Session Started");
-    return () => {
-      streamRef.current?.getTracks().forEach((t) => t.stop());
-    };
+    toast("Private session started — mic and camera are on");
   }, []);
 
-  useEffect(() => {
-    const v = videoRef.current;
-    const s = streamRef.current;
-    if (!cam || !v || !s) return;
-    if (v.srcObject !== s) v.srcObject = s;
+  // Bind the shared classroom stream to our self-view. Callback ref so it
+  // re-attaches on mount, not just when the stream identity changes.
+  const attachSelfVideo = (v: HTMLVideoElement | null) => {
+    videoRef.current = v;
+    if (!v || !localStream) return;
+    if (v.srcObject !== localStream) v.srcObject = localStream;
     const p = v.play?.();
     if (p && typeof p.catch === "function") p.catch(() => {});
-  }, [cam, streamTick]);
+  };
 
-  const toggleMic = () => {
-    const n = !mic;
-    setMic(n);
-    ensureStream({ audio: n, video: cam });
-  };
-  const toggleCam = () => {
-    const n = !cam;
-    setCam(n);
-    ensureStream({ audio: mic, video: n });
-  };
+  useEffect(() => {
+    attachSelfVideo(videoRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [localStream, cam]);
 
   // candidates for additional invites (those not already in the room)
   const inviteCandidates = useMemo(
@@ -1629,11 +1671,11 @@ function PrivateSession({
           <div className="flex h-40 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-indigo-900 to-purple-900">
             {cam ? (
               <video
-                ref={videoRef}
+                ref={attachSelfVideo}
                 autoPlay
                 muted
                 playsInline
-                className="h-full w-full object-cover"
+                className="h-full w-full scale-x-[-1] object-cover"
               />
             ) : (
               <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary text-2xl font-bold">
@@ -1661,12 +1703,17 @@ function PrivateSession({
             key={p.id}
             className="rounded-2xl border border-white/10 bg-room-card p-4 text-center"
           >
-            <div className="flex h-40 items-center justify-center rounded-xl bg-gradient-to-br from-slate-800 to-slate-900">
-              <div
-                className={`flex h-20 w-20 items-center justify-center rounded-full ${p.color} text-2xl font-bold`}
-              >
-                {p.initials}
-              </div>
+            <div className="flex h-40 items-center justify-center overflow-hidden rounded-xl bg-black/40">
+              {privateStreams[p.id] ? (
+                // Audible here, unlike the classroom grid: a private session is
+                // the one place people are meant to talk.
+                <RemoteVideo stream={privateStreams[p.id]} audible />
+              ) : (
+                <div className="flex flex-col items-center gap-2 text-white/50">
+                  <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white/70" />
+                  <span className="text-[11px]">Connecting…</span>
+                </div>
+              )}
             </div>
             <div className="mt-3 flex items-center justify-center gap-2 text-sm font-semibold">
               {p.name}
@@ -1679,14 +1726,14 @@ function PrivateSession({
       <div className="fixed bottom-6 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-full bg-room-card/95 px-3 py-2 shadow-elevated backdrop-blur">
         <CtlBtn
           title={mic ? "Mute mic" : "Unmute mic"}
-          onClick={toggleMic}
+          onClick={onToggleMic}
           className={mic ? "bg-success/20 text-success" : "bg-danger/20 text-danger"}
         >
           {mic ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}
         </CtlBtn>
         <CtlBtn
           title={cam ? "Turn camera off" : "Turn camera on"}
-          onClick={toggleCam}
+          onClick={onToggleCam}
           className={cam ? "bg-success/20 text-success" : "bg-danger/20 text-danger"}
         >
           {cam ? <Video className="h-5 w-5" /> : <VideoOff className="h-5 w-5" />}
