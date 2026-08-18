@@ -175,11 +175,14 @@ function PublicProfile() {
           )}
 
           <section className="mt-5 mx-5 grid grid-cols-3 gap-3 text-center">
-            <StatBox label="Solved" value={String(stats?.answers_given ?? 0)} />
+            {/* Confirmed by the person who raised the doubt, not offers made. */}
+            <StatBox label="Solved" value={String(stats?.solved ?? 0)} />
             <StatBox label="Asked" value={String(stats?.doubts_asked ?? 0)} />
             <StatBox
               label="Rating"
-              value={`${stats ? Number(stats.avg_rating).toFixed(1) : "0.0"}/10`}
+              value={
+                stats && stats.ratings_count > 0 ? `${Number(stats.avg_rating).toFixed(1)}/10` : "—"
+              }
             />
           </section>
 

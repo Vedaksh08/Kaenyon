@@ -28,7 +28,8 @@ function Ranks() {
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+
+    const load = async () => {
       const { data } = await supabase.auth.getUser();
       const uid = data.user?.id;
       try {
@@ -42,9 +43,22 @@ function Ranks() {
       } finally {
         if (!cancelled) setLoading(false);
       }
-    })();
+    };
+
+    void load();
+
+    // Ranks move the instant someone is rated, so reflect that rather than
+    // making people reload. session_ratings is on the realtime publication.
+    const channel = supabase
+      .channel("ranks:session_ratings")
+      .on("postgres_changes", { event: "*", schema: "public", table: "session_ratings" }, () => {
+        void load();
+      })
+      .subscribe();
+
     return () => {
       cancelled = true;
+      void supabase.removeChannel(channel);
     };
   }, []);
 
@@ -61,12 +75,20 @@ function Ranks() {
           <div>
             <div className="opacity-75">AVG RATING</div>
             <div className="text-lg font-bold">
-              {stats ? Number(stats.avg_rating).toFixed(1) : "0.0"} / 10
+              {stats && stats.ratings_count > 0
+                ? `${Number(stats.avg_rating).toFixed(1)} / 10`
+                : "—"}
+            </div>
+            <div className="opacity-60">
+              {stats?.ratings_count
+                ? `${stats.ratings_count} rating${stats.ratings_count === 1 ? "" : "s"}`
+                : "not rated yet"}
             </div>
           </div>
           <div>
+            {/* Confirmed by the asker, not "times I clicked Offer Help". */}
             <div className="opacity-75">SOLVED</div>
-            <div className="text-lg font-bold">{stats?.answers_given ?? 0} Doubts</div>
+            <div className="text-lg font-bold">{stats?.solved ?? 0} Doubts</div>
           </div>
           <div>
             <div className="opacity-75">ASKED</div>
@@ -82,7 +104,7 @@ function Ranks() {
           )}
           {!loading && rows.length === 0 && (
             <div className="px-4 py-6 text-center text-sm text-muted-foreground">
-              No rankings yet — answer a doubt to get on the board.
+              No rankings yet — help someone with a doubt and get rated to appear here.
             </div>
           )}
           {rows.map((r, i) => (
@@ -100,7 +122,9 @@ function Ranks() {
               </div>
               <div className="text-right text-xs">
                 <div className="font-semibold">{r.solved} solved</div>
-                <div className="text-muted-foreground">{Number(r.avg_rating).toFixed(1)} / 10</div>
+                <div className="text-muted-foreground">
+                  {r.ratings_count > 0 ? `${Number(r.avg_rating).toFixed(1)} / 10` : "unrated"}
+                </div>
               </div>
             </button>
           ))}

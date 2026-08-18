@@ -461,6 +461,7 @@ export type Database = {
           avg_rating: number;
           course: string;
           name: string;
+          ratings_count: number;
           solved: number;
           user_id: string;
         }[];
@@ -473,6 +474,8 @@ export type Database = {
           doubts_asked: number;
           friends: number;
           rank: number;
+          ratings_count: number;
+          solved: number;
         }[];
       };
       get_public_profile: {

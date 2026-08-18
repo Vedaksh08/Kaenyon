@@ -22,13 +22,20 @@ export interface LeaderRow {
   course: string | null;
   solved: number;
   avg_rating: number;
+  /** How many ratings the average is built from — 9.0 from one person is not
+   *  the same claim as 9.0 from twenty. */
+  ratings_count: number;
 }
 
 export interface MyStats {
   doubts_asked: number;
+  /** Times you offered to help. */
   answers_given: number;
+  /** Times someone confirmed you actually helped. This is what ranks you. */
+  solved: number;
   friends: number;
   avg_rating: number;
+  ratings_count: number;
   rank: number;
 }
 
