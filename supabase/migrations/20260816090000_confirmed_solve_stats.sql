@@ -18,6 +18,11 @@
 
 -- Ranked by confirmed solves first, then rating. Everyone with any activity
 -- appears, so a new student can see where they stand rather than an empty page.
+--
+-- DROP first: both functions gain columns, and CREATE OR REPLACE cannot change
+-- the OUT parameters of an existing function.
+DROP FUNCTION IF EXISTS public.get_leaderboard(integer);
+
 CREATE OR REPLACE FUNCTION public.get_leaderboard(_limit integer DEFAULT 25)
 RETURNS TABLE (
   user_id uuid,
@@ -64,6 +69,8 @@ GRANT EXECUTE ON FUNCTION public.get_leaderboard(integer) TO authenticated;
 -- Same definition of "solved" on the personal stats, so a student's own numbers
 -- match their row on the leaderboard. `answers_given` keeps counting offers —
 -- it is a different, still-useful figure — but it is no longer what ranks them.
+DROP FUNCTION IF EXISTS public.get_my_stats(uuid);
+
 CREATE OR REPLACE FUNCTION public.get_my_stats(_user_id uuid)
 RETURNS TABLE (
   doubts_asked bigint,
