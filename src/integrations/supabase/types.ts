@@ -497,6 +497,22 @@ export type Database = {
           year: string;
         }[];
       };
+      get_room_presence: {
+        Args: { _classroom_id: string };
+        Returns: { last_seen: string; user_id: string }[];
+      };
+      get_classroom_counts: {
+        Args: { _subject_slug: string };
+        Returns: { classroom_id: string; live: number }[];
+      };
+      get_subject_counts: {
+        Args: Record<string, never>;
+        Returns: { live: number; subject_slug: string }[];
+      };
+      sweep_stale_presence: {
+        Args: Record<string, never>;
+        Returns: undefined;
+      };
       get_suspended_profiles: {
         Args: { _limit?: number };
         Returns: {

@@ -4,10 +4,15 @@ import { supabase } from "@/integrations/supabase/client";
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
   beforeLoad: async () => {
-    const { data, error } = await supabase.auth.getUser();
-    if (error || !data.user) {
+    // getSession() reads the persisted session and refreshes it locally;
+    // getUser() always calls the server, so a slow or offline network logged
+    // people out despite holding a perfectly valid token.
+    const { data: sessionData } = await supabase.auth.getSession();
+    const user = sessionData.session?.user;
+    if (!user) {
       throw redirect({ to: "/login" });
     }
+    const data = { user };
     // Suspension check
     const { data: prof } = await supabase
       .from("profiles")

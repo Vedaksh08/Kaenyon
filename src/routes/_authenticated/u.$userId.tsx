@@ -1,9 +1,9 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { ArrowLeft, MapPin, GraduationCap, UserPlus } from "lucide-react";
+import { ArrowLeft, MapPin, GraduationCap, UserPlus, Check, Clock } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { sendFriendRequest, fetchMyStats, type MyStats } from "@/lib/social";
+import { sendFriendRequest, respondToRequest, fetchMyStats, type MyStats } from "@/lib/social";
 
 export const Route = createFileRoute("/_authenticated/u/$userId")({
   head: () => ({
@@ -47,6 +47,44 @@ function PublicProfile() {
         if (!cancelled) setStats(s);
       })
       .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
+
+  // What relationship we already have with this person, so the action button
+  // can show the truth instead of always offering "Add Friend".
+  const [friendState, setFriendState] = useState<
+    "none" | "outgoing" | "incoming" | "accepted" | "self"
+  >("none");
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data: me } = await supabase.auth.getUser();
+      const uid = me.user?.id;
+      if (!uid || cancelled) return;
+      if (uid === userId) {
+        setFriendState("self");
+        return;
+      }
+      const { data: row } = await supabase
+        .from("friendships")
+        .select("requester_id, addressee_id, status")
+        .or(
+          `and(requester_id.eq.${uid},addressee_id.eq.${userId}),and(requester_id.eq.${userId},addressee_id.eq.${uid})`,
+        )
+        .maybeSingle();
+      if (cancelled) return;
+      if (!row) {
+        setFriendState("none");
+      } else if (row.status === "accepted") {
+        setFriendState("accepted");
+      } else if (row.status === "pending") {
+        setFriendState(row.requester_id === uid ? "outgoing" : "incoming");
+      } else {
+        setFriendState("none");
+      }
+    })();
     return () => {
       cancelled = true;
     };
@@ -146,19 +184,47 @@ function PublicProfile() {
           </section>
 
           <section className="mt-5 mx-5">
-            <button
-              onClick={async () => {
-                try {
-                  const msg = await sendFriendRequest(userId);
-                  toast.success(msg);
-                } catch (e) {
-                  toast.error(e instanceof Error ? e.message : "Could not send request");
-                }
-              }}
-              className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-primary py-2.5 text-sm font-semibold text-primary-foreground"
-            >
-              <UserPlus className="h-4 w-4" /> Add Friend
-            </button>
+            {/* The button used to be unconditional, so an existing friend was
+             * still invited to be added. Reflect the real relationship. */}
+            {friendState === "self" ? null : friendState === "accepted" ? (
+              <div className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-border py-2.5 text-sm font-semibold text-muted-foreground">
+                <Check className="h-4 w-4 text-success" /> Friends
+              </div>
+            ) : friendState === "outgoing" ? (
+              <div className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-border py-2.5 text-sm font-semibold text-muted-foreground">
+                <Clock className="h-4 w-4" /> Request sent
+              </div>
+            ) : friendState === "incoming" ? (
+              <button
+                onClick={async () => {
+                  try {
+                    await respondToRequest(userId, true);
+                    setFriendState("accepted");
+                    toast.success("Friend request accepted");
+                  } catch (e) {
+                    toast.error(e instanceof Error ? e.message : "Could not accept");
+                  }
+                }}
+                className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-primary py-2.5 text-sm font-semibold text-primary-foreground"
+              >
+                <Check className="h-4 w-4" /> Accept request
+              </button>
+            ) : (
+              <button
+                onClick={async () => {
+                  try {
+                    const msg = await sendFriendRequest(userId);
+                    setFriendState("outgoing");
+                    toast.success(msg);
+                  } catch (e) {
+                    toast.error(e instanceof Error ? e.message : "Could not send request");
+                  }
+                }}
+                className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-primary py-2.5 text-sm font-semibold text-primary-foreground"
+              >
+                <UserPlus className="h-4 w-4" /> Add Friend
+              </button>
+            )}
           </section>
         </>
       )}

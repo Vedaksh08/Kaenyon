@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
 import { ArrowLeft, MailCheck } from "lucide-react";
@@ -7,6 +7,14 @@ import { SocialAuthButtons } from "@/components/social-auth";
 import { KaenyonLogo } from "@/components/brand";
 
 export const Route = createFileRoute("/login")({
+  ssr: false,
+  // Already signed in? Don't make them sign in again.
+  beforeLoad: async () => {
+    const { data } = await supabase.auth.getSession();
+    if (data.session?.user) {
+      throw redirect({ to: "/home" });
+    }
+  },
   head: () => ({
     meta: [
       { title: "Sign in — Kaenyon" },

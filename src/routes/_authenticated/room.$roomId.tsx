@@ -231,6 +231,12 @@ function Room() {
       ? crypto.randomUUID()
       : `s-${Math.random().toString(36).slice(2)}`,
   );
+  // Mirrors of cam/mic for callbacks that close over stale state — notably the
+  // presence subscribe handler, which runs once.
+  const camRef = useRef(false);
+  const micRef = useRef(false);
+  camRef.current = cam;
+  micRef.current = mic;
   const streamRef = useRef<MediaStream | null>(null);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -693,13 +699,28 @@ function Room() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const { data: rows } = await supabase
+      // Sweep first, so a room opened after everyone left does not briefly
+      // render their abandoned doubts.
+      await supabase.rpc("sweep_stale_presence");
+      if (cancelled) return;
+      const { data: allRows } = await supabase
         .from("doubts")
         .select("id, body, author_id, created_at")
         .eq("classroom_id", roomId)
         .order("created_at", { ascending: false })
         .limit(50);
-      if (cancelled || !rows) return;
+      if (cancelled || !allRows) return;
+
+      // A doubt is only answerable while its author is still in the room, so
+      // show it only if they are. The sweep above deletes the rest; this keeps
+      // the list honest in the gap before it runs. Age is not the test — an
+      // author sitting in the room for an hour should keep their question.
+      const { data: live } = await supabase.rpc("get_room_presence", {
+        _classroom_id: roomId,
+      });
+      if (cancelled) return;
+      const present = new Set((live ?? []).map((r) => r.user_id));
+      const rows = allRows.filter((r) => present.has(r.author_id));
       const ids = Array.from(new Set(rows.map((r) => r.author_id)));
       const nameMap: Record<string, string> = {};
       if (ids.length) {
@@ -863,14 +884,26 @@ function Room() {
           }
         })
 
+        // Someone left the private session — drop them so their tile goes with
+        // them instead of hanging around until the page is reloaded.
+        .on("broadcast", { event: "private_leave" }, ({ payload }) => {
+          const p = payload as { userId?: string; sessionKey?: string };
+          if (!p?.userId) return;
+          setInvitedIds((prev) => prev.filter((id) => id !== p.userId && id !== p.sessionKey));
+        })
+
         .subscribe(async (status) => {
           if (status === "SUBSCRIBED") {
+            // Read the live values rather than hardcoding false: the camera is
+            // usually already on by the time this channel subscribes, and the
+            // sync effect below only fires on *change*, so everyone else was
+            // left believing our camera was off.
             await channel!.track({
               user_id: uid,
               session_key: myKey,
               name: displayName,
-              mic: false,
-              cam: false,
+              mic: micRef.current,
+              cam: camRef.current,
             });
           }
         });
@@ -950,7 +983,14 @@ function Room() {
       if (cancelled) return;
       const slug = room?.subject_slug ?? null;
       await markPresence(userId, roomId, slug);
-      interval = window.setInterval(() => void markPresence(userId, roomId, slug), 45_000);
+      // Clear anyone whose heartbeat has lapsed. Unload handlers are killed
+      // often enough that we cannot rely on people cleaning up after
+      // themselves, so whoever is still here does it for them.
+      void supabase.rpc("sweep_stale_presence");
+      interval = window.setInterval(() => {
+        void markPresence(userId, roomId, slug);
+        void supabase.rpc("sweep_stale_presence");
+      }, 30_000);
     })();
     return () => {
       cancelled = true;
@@ -1133,6 +1173,13 @@ function Room() {
           // is exactly who should be able to mute people here.
           isModerator={pendingRatee !== null}
           onReturn={() => {
+            // Tell the others we are going. Without this the session only ended
+            // locally and everyone else kept our tile on screen forever.
+            void presenceChannelRef.current?.send({
+              type: "broadcast",
+              event: "private_leave",
+              payload: { userId, sessionKey: sessionKeyRef.current },
+            });
             setPrivateSession(false);
             setInvitedIds([]);
             // Talking is only allowed in private, so drop the mic on the way out.
@@ -1289,10 +1336,17 @@ function Room() {
                     </div>
                   )}
                 </div>
-                <div className="mt-2.5 flex items-center gap-2">
+                <div className="mt-2.5 flex items-center gap-1.5">
                   <span className="min-w-0 flex-1 truncate text-sm font-semibold">{p.name}</span>
+                  {/* Mic was never shown here at all, so a muted classmate
+                   * looked identical to a talking one. */}
+                  {(p.you ? mic : p.mic) ? (
+                    <Mic className="h-3.5 w-3.5 shrink-0 text-success" />
+                  ) : (
+                    <MicOff className="h-3.5 w-3.5 shrink-0 text-white/30" />
+                  )}
                   {(p.you ? cam : p.cam) ? (
-                    <Video className="h-3.5 w-3.5 shrink-0 text-white/50" />
+                    <Video className="h-3.5 w-3.5 shrink-0 text-success" />
                   ) : (
                     <VideoOff className="h-3.5 w-3.5 shrink-0 text-danger" />
                   )}

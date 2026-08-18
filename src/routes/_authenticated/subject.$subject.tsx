@@ -99,6 +99,11 @@ function SubjectPage() {
     };
 
     void load();
+    // Delete lapsed rows rather than only hiding them, so the realtime DELETE
+    // reaches everyone else watching this subject too.
+    void supabase.rpc("sweep_stale_presence").then(() => {
+      if (!cancelled) void load();
+    });
 
     // Keep counts live and re-scale rooms as participants join/leave.
     const channel = supabase
