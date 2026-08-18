@@ -548,7 +548,17 @@ function Room() {
       }
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: want.audio,
-        video: want.video ? { width: { ideal: 640 }, height: { ideal: 480 } } : false,
+        // Tiles render around 200px wide in a full grid, so 640x480 at an
+        // uncapped framerate spends upload bandwidth on detail nobody sees and
+        // makes weaker connections stutter. 320x240 at 20fps looks the same in
+        // a tile and roughly quarters the bitrate.
+        video: want.video
+          ? {
+              width: { ideal: 320, max: 640 },
+              height: { ideal: 240, max: 480 },
+              frameRate: { ideal: 20, max: 24 },
+            }
+          : false,
       });
       // If a newer request superseded this one (or the component unmounted while we awaited),
       // stop this stream so no stray camera track keeps the LED on.
@@ -803,6 +813,8 @@ function Room() {
 
   // Presence: track real users currently in this classroom via Supabase Realtime.
   const presenceChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  // sessionKey -> last time we had any evidence they were alive.
+  const lastSeenRef = useRef<Map<string, number>>(new Map());
   useEffect(() => {
     let cancelled = false;
     let channel: ReturnType<typeof supabase.channel> | null = null;
@@ -831,14 +843,21 @@ function Room() {
           Array<{ user_id: string; session_key?: string; name: string; mic: boolean; cam: boolean }>
         >;
         const byUser = new Map<string, Participant>();
+        const seenKeys = new Set<string>();
         for (const [key, metas] of Object.entries(state)) {
           if (key === myKey) continue;
           const meta = metas[0];
           if (!meta || !meta.user_id) continue;
           if (meta.user_id === uid) continue; // your own other tab
           if (byUser.has(meta.user_id)) continue; // same person, second session
+          const id = meta.session_key || key;
+          seenKeys.add(id);
+          // First time we have seen this key, or it is still here: treat the
+          // sync itself as proof of life. The heartbeat below only has to catch
+          // people who stop appearing in syncs without a leave event.
+          lastSeenRef.current.set(id, Date.now());
           byUser.set(meta.user_id, {
-            id: meta.session_key || key,
+            id,
             userId: meta.user_id,
             name: meta.name,
             initials: initialsFor(meta.name),
@@ -846,6 +865,10 @@ function Room() {
             mic: !!meta.mic,
             cam: !!meta.cam,
           });
+        }
+        // Forget anyone presence no longer reports, so a rejoin starts clean.
+        for (const key of [...lastSeenRef.current.keys()]) {
+          if (!seenKeys.has(key)) lastSeenRef.current.delete(key);
         }
         setRemoteParticipants([...byUser.values()]);
       };
@@ -860,7 +883,17 @@ function Room() {
         .on("broadcast", { event: "left" }, ({ payload }) => {
           const key = (payload as { session_key?: string })?.session_key;
           if (!key) return;
+          lastSeenRef.current.delete(key);
           setRemoteParticipants((prev) => prev.filter((p) => p.id !== key));
+        })
+        // Everyone shouts "still here" on a timer. This is the only signal that
+        // survives a browser dying without a clean close — a closed lid, dropped
+        // wifi, killed tab. Supabase expires those entries on its own schedule
+        // per connection, which is why one viewer would see someone leave while
+        // another still showed their tile.
+        .on("broadcast", { event: "alive" }, ({ payload }) => {
+          const key = (payload as { session_key?: string })?.session_key;
+          if (key) lastSeenRef.current.set(key, Date.now());
         })
         .on("broadcast", { event: "help_offer" }, ({ payload }) => {
           const p = payload as { to: string; helper: string; doubt: string };
@@ -924,8 +957,28 @@ function Room() {
         });
     })();
 
+    // Heartbeat: announce ourselves, and independently evict anyone who has gone
+    // quiet. Every viewer runs the same clock against the same evidence, so a
+    // departure now looks identical to everybody instead of depending on which
+    // socket Supabase happened to expire first.
+    const HEARTBEAT_MS = 3000;
+    const SILENT_LIMIT_MS = 12000;
+    const heartbeat = window.setInterval(() => {
+      void presenceChannelRef.current?.send({
+        type: "broadcast",
+        event: "alive",
+        payload: { session_key: sessionKeyRef.current },
+      });
+      const cutoff = Date.now() - SILENT_LIMIT_MS;
+      setRemoteParticipants((prev) => {
+        const alive = prev.filter((p) => (lastSeenRef.current.get(p.id) ?? 0) > cutoff);
+        return alive.length === prev.length ? prev : alive;
+      });
+    }, HEARTBEAT_MS);
+
     return () => {
       cancelled = true;
+      window.clearInterval(heartbeat);
       if (channel) {
         // Broadcast our departure before untracking. untrack() is async and the
         // socket often closes first, so peers would otherwise keep rendering a

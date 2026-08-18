@@ -49,6 +49,8 @@ type Peer = {
   polite: boolean;
   makingOffer: boolean;
   ignoreOffer: boolean;
+  /** Bounded so a dead peer does not retry forever. */
+  iceRestarts: number;
   stream: MediaStream;
 };
 
@@ -128,8 +130,13 @@ export function useWebrtcMesh(opts: {
       const local = localStreamRef.current;
 
       // Fixed m-line order: video first, then audio.
+      // Cap the send bitrate. In a mesh every extra person is another full
+      // upload, so an uncapped stream saturates a home connection and shows up
+      // as everyone stuttering at once. 250kbps is comfortable for a small
+      // tile and leaves headroom for several peers.
       const videoTx = pc.addTransceiver(local?.getVideoTracks()[0] ?? "video", {
         direction: "sendrecv",
+        sendEncodings: [{ maxBitrate: 250_000, maxFramerate: 20 }],
       });
       const audioTx = pc.addTransceiver(local?.getAudioTracks()[0] ?? "audio", {
         direction: "sendrecv",
@@ -145,6 +152,7 @@ export function useWebrtcMesh(opts: {
         polite: userId > peerId,
         makingOffer: false,
         ignoreOffer: false,
+        iceRestarts: 0,
         stream,
       };
       peersRef.current.set(peerId, peer);
@@ -204,12 +212,22 @@ export function useWebrtcMesh(opts: {
         // reports "I can't see my friend". Check it in the browser console.
         console.info(`[rtc] ${peerId.slice(0, 8)} -> ${pc.connectionState}`);
         if (pc.connectionState === "failed") {
-          try {
-            pc.restartIce();
-          } catch {
-            /* ignore */
+          // Try to recover, but give up rather than retrying forever — a peer
+          // whose browser is gone would otherwise keep a frozen tile on screen
+          // indefinitely. Presence heartbeats remove them regardless; this
+          // stops us burning ICE restarts on a connection nobody is on.
+          if (peer.iceRestarts < 2) {
+            peer.iceRestarts += 1;
+            try {
+              pc.restartIce();
+            } catch {
+              /* ignore */
+            }
+          } else {
+            dropPeer(peerId);
           }
         }
+        if (pc.connectionState === "connected") peer.iceRestarts = 0;
         if (pc.connectionState === "closed") dropPeer(peerId);
       };
 
