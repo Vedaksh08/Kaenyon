@@ -248,6 +248,10 @@ function Room() {
   const IDLE_MS = 60_000;
   const KICK_MS = 120;
   const [afkWarn, setAfkWarn] = useState(false);
+  // Read inside the AFK timer, which is created once and would otherwise close
+  // over a stale `privateSession`.
+  const privateSessionRef = useRef(false);
+  privateSessionRef.current = privateSession;
   const [afkSeconds, setAfkSeconds] = useState(KICK_MS);
   const lastActivityRef = useRef<number>(Date.now());
   const afkWarnRef = useRef(false);
@@ -257,6 +261,10 @@ function Room() {
   useEffect(() => {
     const SAMPLE_MS = 1500;
     let detector: import("@mediapipe/tasks-vision").FaceDetector | null = null;
+    const probe = document.createElement("video");
+    probe.muted = true;
+    probe.playsInline = true;
+    probe.autoplay = true;
     let cancelled = false;
     let interval: number | null = null;
 
@@ -271,11 +279,31 @@ function Room() {
     };
 
     const tick = () => {
-      const v = videoRef.current;
+      // Being in a private session IS activity — you are talking to someone.
+      // The old check read videoRef, which belongs to whichever view is
+      // mounted; during a private session the classroom's element is gone, so
+      // "no face found" was really "no video element", and people mid-session
+      // were warned and then kicked out of the room they were actively using.
+      if (privateSessionRef.current) {
+        bump();
+        return;
+      }
+
       const stream = streamRef.current;
       const camOn = !!stream?.getVideoTracks().some((t) => t.enabled && t.readyState === "live");
 
-      if (!camOn || !v || v.readyState < 2 || !detector) {
+      // Sample a detached element fed straight from the stream rather than
+      // whatever happens to be on screen.
+      if (camOn) {
+        const st = streamRef.current;
+        if (st && probe.srcObject !== st) {
+          probe.srcObject = st;
+          const pl = probe.play?.();
+          if (pl && typeof pl.catch === "function") pl.catch(() => {});
+        }
+      }
+
+      if (!camOn || probe.readyState < 2 || probe.videoWidth === 0 || !detector) {
         if (!afkWarnRef.current && Date.now() - lastActivityRef.current >= IDLE_MS) {
           afkWarnRef.current = true;
           setAfkWarn(true);
@@ -285,7 +313,7 @@ function Room() {
       }
 
       try {
-        const res = detector.detectForVideo(v, performance.now());
+        const res = detector.detectForVideo(probe, performance.now());
         if (res.detections && res.detections.length > 0) {
           bump();
         }
@@ -329,6 +357,7 @@ function Room() {
     return () => {
       cancelled = true;
       if (interval) window.clearInterval(interval);
+      probe.srcObject = null;
       detector?.close();
     };
   }, []);
@@ -1981,24 +2010,50 @@ function PrivateSession({
 
   // Moderator commands. Only the doubt's author is moderator, so everyone else
   // just listens.
+  // Latest mic state and toggle, so the listener below can stay registered once
+  // instead of being re-added whenever they change.
+  const micRef = useRef(mic);
+  micRef.current = mic;
+  const toggleMicRef = useRef(onToggleMic);
+  toggleMicRef.current = onToggleMic;
+
   useEffect(() => {
     if (!channel) return;
+    // This effect used to depend on [channel, mic, onToggleMic] and never
+    // removed the old listener, so every mic change stacked another one — and
+    // a single mute fired a toast per stacked copy. Register once per channel.
+    let detached = false;
     const onMute = ({ payload }: { payload: unknown }) => {
+      if (detached) return;
       const p = payload as { target?: string; all?: boolean; muted?: boolean };
       const forMe = p.all || p.target === sessionKey;
       if (!forMe) return;
       if (p.all) {
         // Temporary: mute now, but leave them free to unmute themselves.
-        if (mic) onToggleMic();
-        toast("Muted by the moderator");
+        if (micRef.current) toggleMicRef.current();
+        toast("Muted by the moderator", { id: "mod-mute" });
         return;
       }
-      setMutedByMod(!!p.muted);
-      if (p.muted && mic) onToggleMic();
-      toast(p.muted ? "The moderator muted you" : "The moderator unmuted you");
+      setMutedByMod((was) => {
+        const now = !!p.muted;
+        // Only speak up when the state actually changes, and reuse one toast id
+        // so a repeat replaces the previous message rather than stacking.
+        if (was !== now) {
+          toast(now ? "The moderator muted you" : "The moderator unmuted you", {
+            id: "mod-mute",
+          });
+        }
+        return now;
+      });
+      if (p.muted && micRef.current) toggleMicRef.current();
     };
     channel.on("broadcast", { event: "mod_mute" }, onMute);
-  }, [channel, mic, onToggleMic, sessionKey]);
+    return () => {
+      // Supabase exposes no per-handler off(), so neutralise this closure
+      // instead. The channel itself is torn down by the mesh hook.
+      detached = true;
+    };
+  }, [channel, sessionKey]);
 
   const muteAll = () => {
     void channel?.send({ type: "broadcast", event: "mod_mute", payload: { all: true } });
@@ -2172,7 +2227,7 @@ function PrivateSession({
       >
         {panel === "board" && (
           <div className="order-2 h-[60vh] overflow-hidden rounded-2xl border border-white/10 bg-room-card lg:order-1 lg:h-[calc(100vh-190px)]">
-            <Whiteboard channel={channel} />
+            <Whiteboard channel={channel} myName={youName.replace(" (You)", "")} />
           </div>
         )}
 
