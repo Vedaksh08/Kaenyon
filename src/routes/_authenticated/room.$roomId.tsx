@@ -20,7 +20,7 @@ import {
 import { toast } from "sonner";
 import { usePlan } from "@/lib/plan-context";
 import { ReportModal, BlockModal } from "@/components/report-block-modals";
-import { RatingModal } from "@/components/rating-modal";
+import { RatingModal, type Ratee } from "@/components/rating-modal";
 import { supabase } from "@/integrations/supabase/client";
 import { sendFriendRequest, markPresence, clearPresence } from "@/lib/social";
 import { useWebrtcMesh } from "@/lib/use-webrtc-mesh";
@@ -203,10 +203,12 @@ function Room() {
   // you the asker and therefore the one who rates afterwards.
   const [invitingForOwnDoubt, setInvitingForOwnDoubt] = useState(false);
   const [rating, setRating] = useState(false);
-  const [ratingFor, setRatingFor] = useState<string | null>(null);
-  // Only the person who raised the doubt rates, and only the helper gets rated.
-  // Set when a private session starts; null for the helper, so leaving the
-  // session never prompts them.
+  // Everyone the asker may rate, with names, so the modal can say who each
+  // score is for. A session can hold several helpers.
+  const [ratingFor, setRatingFor] = useState<Ratee[]>([]);
+  // Only the person who raised the doubt rates, and only helpers get rated.
+  // Set when a private session starts; null for helpers, so leaving the session
+  // never prompts them.
   const [pendingRatee, setPendingRatee] = useState<string | null>(null);
 
   const [menuFor, setMenuFor] = useState<string | null>(null);
@@ -1262,7 +1264,7 @@ function Room() {
           // pendingRatee is set only for the student who raised the doubt, which
           // is exactly who should be able to mute people here.
           isModerator={pendingRatee !== null}
-          onReturn={() => {
+          onReturn={(participants) => {
             // Tell the others we are going. Without this the session only ended
             // locally and everyone else kept our tile on screen forever.
             void presenceChannelRef.current?.send({
@@ -1278,9 +1280,17 @@ function Room() {
               void ensureStream({ audio: false, video: true });
             }
             // Helpers have no pendingRatee, so they return to the room without
-            // being asked to rate the person they just helped.
+            // being asked to rate the people they just helped.
             if (pendingRatee) {
-              setRatingFor(pendingRatee);
+              // Everyone who was actually in the session, not just whoever
+              // happened to be invited first — with 3 people the asker should
+              // be able to rate each helper individually.
+              const candidates = participants.filter((r) => r.userId && r.userId !== userId);
+              const list: Ratee[] =
+                candidates.length > 0
+                  ? candidates.map((r) => ({ userId: r.userId!, name: r.name }))
+                  : [{ userId: pendingRatee, name: "Your helper" }];
+              setRatingFor(list);
               setPendingRatee(null);
               setRating(true);
             }
@@ -1621,9 +1631,9 @@ function Room() {
         open={rating}
         onClose={() => {
           setRating(false);
-          setRatingFor(null);
+          setRatingFor([]);
         }}
-        rateeId={ratingFor}
+        ratees={ratingFor}
         classroomId={roomId}
       />
 
@@ -1867,7 +1877,7 @@ function PrivateSession({
   youName: string;
   invitees: Participant[];
   roomParticipants: Participant[];
-  onReturn: () => void;
+  onReturn: (participants: Participant[]) => void;
   onInvite: (ids: string[]) => void;
   roomId: string;
   sessionKey: string;
@@ -2147,7 +2157,7 @@ function PrivateSession({
             {remainingSlots > 0 ? `(+${remainingSlots})` : "(full)"}
           </button>
           <button
-            onClick={onReturn}
+            onClick={() => onReturn(all)}
             className="inline-flex items-center gap-1 rounded-lg bg-warning px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90"
           >
             <ArrowLeft className="h-4 w-4" /> Return to Main
@@ -2309,7 +2319,11 @@ function PrivateSession({
         >
           {cam ? <Video className="h-5 w-5" /> : <VideoOff className="h-5 w-5" />}
         </CtlBtn>
-        <CtlBtn title="Leave private session" onClick={onReturn} className="bg-danger text-white">
+        <CtlBtn
+          title="Leave private session"
+          onClick={() => onReturn(all)}
+          className="bg-danger text-white"
+        >
           <X className="h-5 w-5" />
         </CtlBtn>
       </div>
