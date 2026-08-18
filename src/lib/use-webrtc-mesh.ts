@@ -149,6 +149,13 @@ export function useWebrtcMesh(opts: {
       };
       peersRef.current.set(peerId, peer);
 
+      // A peer created after getUserMedia resolved starts from whatever
+      // localStreamRef held when addTransceiver ran. Push the current tracks
+      // straight away rather than waiting for the next localStream change,
+      // which may never come — that delay is why a camera took so long to
+      // appear for people who joined later.
+      queueMicrotask(() => syncTracksRef.current());
+
       pc.ontrack = (ev) => {
         const track = ev.track;
         if (!stream.getTracks().includes(track)) stream.addTrack(track);
@@ -292,7 +299,22 @@ export function useWebrtcMesh(opts: {
             // Standard perfect-negotiation collision handling.
             const offerCollision = peer.makingOffer || pc.signalingState !== "stable";
             peer.ignoreOffer = !peer.polite && offerCollision;
-            if (peer.ignoreOffer) return;
+            if (peer.ignoreOffer) {
+              // The polite side is now waiting on an answer that will never
+              // come, and nothing else retries this pair — which is why in a
+              // three-way room one link would settle and another would not.
+              // Re-offer once we are idle so the connection completes.
+              void (async () => {
+                for (let i = 0; i < 20 && !cancelled; i++) {
+                  await new Promise((r) => setTimeout(r, 250));
+                  if (pc.signalingState === "stable" && !peer.makingOffer) {
+                    void negotiate(msg.from);
+                    return;
+                  }
+                }
+              })();
+              return;
+            }
 
             await pc.setRemoteDescription(msg.sdp);
             await flushIce(msg.from, pc);

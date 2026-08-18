@@ -347,7 +347,7 @@ function Room() {
     // of a minute to react, which is far too long for a room full of students.
     const SAMPLE_MS = 1000;
     const LOAD_DELAY_MS = 2000;
-    const THRESHOLD = 0.75;
+    const THRESHOLD = 0.85;
     const STRIKES_MAX = NSFW_STRIKES_MAX;
     let cancelled = false;
     let interval: number | null = null;
@@ -377,10 +377,19 @@ function Room() {
 
     const scoreFrame = async () => {
       const preds = await model!.classify(probe, 5);
-      // "Sexy" is excluded on purpose — see note above.
-      return preds
-        .filter((p) => p.className === "Porn" || p.className === "Hentai")
-        .reduce((s, p) => s + p.probability, 0);
+      const by = (name: string) => preds.find((p) => p.className === name)?.probability ?? 0;
+
+      // Take the strongest explicit class rather than adding them together.
+      // Summing meant two unconfident guesses (Porn 0.4 + Hentai 0.4) cleared a
+      // 0.75 threshold that neither class actually reached, which is how a
+      // fully-clothed student in an ordinary room got flagged.
+      const explicit = Math.max(by("Porn"), by("Hentai"));
+
+      // "Neutral" and "Drawing" are the classes ordinary webcam footage lands
+      // in. If the model is more confident about those than about anything
+      // explicit, this is not a violation whatever the raw number says.
+      const benign = Math.max(by("Neutral"), by("Drawing"));
+      return explicit > benign ? explicit : 0;
     };
 
     const tick = async () => {
@@ -401,13 +410,19 @@ function Room() {
           return;
         }
 
-        // Second look before counting it — motion blur and odd frames produce
-        // one-off false positives.
-        await new Promise((r) => setTimeout(r, 400));
-        if (cancelled) return;
-        if ((await scoreFrame()) < THRESHOLD) return;
+        // Three more looks spread over a second. A real violation stays on
+        // camera; a bad frame — motion blur, an arm across the lens, a flash of
+        // skin tone as someone leans in — does not survive being asked again.
+        let confirmations = 0;
+        for (let i = 0; i < 3; i++) {
+          await new Promise((r) => setTimeout(r, 300));
+          if (cancelled) return;
+          if ((await scoreFrame()) >= THRESHOLD) confirmations += 1;
+        }
+        if (confirmations < 3) return;
 
         strikes += 1;
+        console.warn(`[moderation] strike ${strikes}/${STRIKES_MAX} (score ${unsafe.toFixed(2)})`);
         setNsfwStrikes(strikes);
         setNsfwWarn(true);
         if (strikes >= STRIKES_MAX) {
