@@ -1000,17 +1000,38 @@ function Room() {
   }, [userId, roomId]);
 
   // Push our mic/cam state into presence whenever it changes.
+  //
+  // The channel is created asynchronously, so on mount this often ran before it
+  // existed and simply gave up — leaving everyone else with whatever state was
+  // tracked at subscribe time. Retry until it lands.
   useEffect(() => {
-    const ch = presenceChannelRef.current;
-    if (!ch || !userId) return;
+    if (!userId) return;
+    let cancelled = false;
+    let attempts = 0;
     const displayName = profile?.name?.trim() || "Student";
-    void ch.track({
-      user_id: userId,
-      session_key: sessionKeyRef.current,
-      name: displayName,
-      mic,
-      cam,
-    });
+
+    const push = () => {
+      if (cancelled) return true;
+      const ch = presenceChannelRef.current;
+      if (!ch) return false;
+      void ch.track({
+        user_id: userId,
+        session_key: sessionKeyRef.current,
+        name: displayName,
+        mic,
+        cam,
+      });
+      return true;
+    };
+
+    if (push()) return;
+    const timer = window.setInterval(() => {
+      if (push() || ++attempts > 20) window.clearInterval(timer);
+    }, 300);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
   }, [mic, cam, userId, profile?.name]);
 
   const ask = async () => {
@@ -1164,6 +1185,7 @@ function Room() {
           roomParticipants={remoteParticipants.filter((p) => !blocked.includes(p.userId ?? p.id))}
           roomId={roomId}
           sessionKey={sessionKeyRef.current}
+          selfUserId={userId}
           localStream={localStream}
           cam={cam}
           mic={mic}
@@ -1345,7 +1367,10 @@ function Room() {
                   ) : (
                     <MicOff className="h-3.5 w-3.5 shrink-0 text-white/30" />
                   )}
-                  {(p.you ? cam : p.cam) ? (
+                  {/* Trust the live track over the presence flag: presence can
+                   * lag or arrive stale, and showing "camera off" next to a
+                   * working picture is worse than showing nothing. */}
+                  {(p.you ? cam : !!remoteStreams[p.id]?.getVideoTracks().length || p.cam) ? (
                     <Video className="h-3.5 w-3.5 shrink-0 text-success" />
                   ) : (
                     <VideoOff className="h-3.5 w-3.5 shrink-0 text-danger" />
@@ -1763,6 +1788,7 @@ function PrivateSession({
   onInvite,
   roomId,
   sessionKey,
+  selfUserId,
   localStream,
   cam,
   mic,
@@ -1777,6 +1803,7 @@ function PrivateSession({
   onInvite: (ids: string[]) => void;
   roomId: string;
   sessionKey: string;
+  selfUserId: string | null;
   localStream: MediaStream | null;
   cam: boolean;
   mic: boolean;
@@ -1797,15 +1824,68 @@ function PrivateSession({
   // Screen video + microphone audio, rebuilt whenever either side changes.
   const [shareStream, setShareStream] = useState<MediaStream | null>(null);
 
-  const all = invitees;
-
-  const totalSeats = 1 + all.length; // you + others
-  const remainingSlots = Math.max(0, 7 - totalSeats);
-
   // Real audio+video with the people in this session. Previously this screen
   // rendered static initials for everyone else and ran its own getUserMedia,
   // so nobody could see or hear anyone — and grabbing the camera a second time
   // knocked out the classroom's own stream on the way back.
+  // Who is *actually* in this session, from a presence channel — the same
+  // mechanism the classroom uses.
+  //
+  // This screen used to derive peers from a locally-managed invitedIds array
+  // built out of broadcasts. Host and invitee filled it via different paths at
+  // different moments, so the two sides could disagree about who was present
+  // and one of them ended up with nobody to offer to: "Connecting..." forever.
+  // Presence is a single shared source of truth, so both sides always agree.
+  const [livePeers, setLivePeers] = useState<Participant[]>([]);
+  useEffect(() => {
+    const ch = supabase.channel(`room:${roomId}:private`, {
+      config: { presence: { key: sessionKey } },
+    });
+    const sync = () => {
+      const state = ch.presenceState() as Record<
+        string,
+        Array<{ session_key?: string; user_id?: string; name?: string }>
+      >;
+      const seen = new Map<string, Participant>();
+      for (const [key, metas] of Object.entries(state)) {
+        if (key === sessionKey) continue;
+        const meta = metas[0];
+        if (!meta) continue;
+        const id = meta.session_key || key;
+        if (seen.has(id)) continue;
+        const name = meta.name || "Student";
+        seen.set(id, {
+          id,
+          userId: meta.user_id,
+          name,
+          initials: initialsFor(name),
+          color: colorFor(id),
+          mic: false,
+          cam: true,
+        });
+      }
+      setLivePeers([...seen.values()]);
+    };
+    ch.on("presence", { event: "sync" }, sync)
+      .on("presence", { event: "join" }, sync)
+      .on("presence", { event: "leave" }, sync)
+      .subscribe(async (status) => {
+        if (status === "SUBSCRIBED") {
+          await ch.track({
+            session_key: sessionKey,
+            user_id: selfUserId,
+            name: youName.replace(" (You)", ""),
+          });
+        }
+      });
+    return () => {
+      void ch.untrack().then(() => supabase.removeChannel(ch));
+    };
+  }, [roomId, sessionKey, selfUserId, youName]);
+
+  const all = livePeers;
+  const totalSeats = 1 + all.length; // you + others
+  const remainingSlots = Math.max(0, 7 - totalSeats);
   const peerIds = useMemo(() => all.map((p) => p.id), [all]);
   const { remoteStreams: privateStreams, channel } = useWebrtcMesh({
     roomId: `${roomId}:private`,

@@ -362,17 +362,24 @@ export function useWebrtcMesh(opts: {
           subscribedRef.current = true;
           setChannel(channel);
           announce();
-          // Re-announce for a while: presence and the RTC channel come up
-          // independently, so a peer may not have been listening yet.
-          let ticks = 0;
+          // Keep announcing while anyone is still unconnected. A fixed 20s
+          // window meant that if the other person joined a private session
+          // after it expired, nobody was left offering and both sides sat on
+          // "Connecting..." forever. Stop only once every known peer is up.
           retryTimer = window.setInterval(() => {
-            if (cancelled || ++ticks > 10) {
+            if (cancelled) {
               if (retryTimer) window.clearInterval(retryTimer);
               retryTimer = null;
               return;
             }
+            const targets = new Set([...peerIdsRef.current, ...knownPeersRef.current]);
+            targets.delete(userId);
+            const pending = [...targets].some(
+              (id) => peersRef.current.get(id)?.pc.connectionState !== "connected",
+            );
+            if (!pending && targets.size > 0) return; // everyone is up; idle
             announce();
-          }, 2000);
+          }, 2500);
         }
       });
 
