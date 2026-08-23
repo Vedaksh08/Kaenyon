@@ -62,7 +62,7 @@ function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-background px-4 py-10">
       <div className="w-full max-w-sm">
         <div className="flex justify-center">
-          <PathwaayLogo size="lg" />
+          <PathwaayLogo size="lg" tagline />
         </div>
 
         {sent ? (

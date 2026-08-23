@@ -30,6 +30,7 @@ import { useWebrtcMesh } from "@/lib/use-webrtc-mesh";
 import { cn } from "@/lib/utils";
 import { useCaptureGuard } from "@/lib/use-capture-guard";
 import { Whiteboard } from "@/components/whiteboard";
+import { PathwaayMark } from "@/components/brand";
 
 /**
  * `audible` is off by default: the main classroom is silent by design, so
@@ -197,6 +198,10 @@ const PHONE_LABELS = new Set(["cell phone", "mobile phone", "telephone"]);
 // (below) are what keep false positives out, not the threshold alone.
 const PHONE_CONFIDENCE = 0.3;
 const PHONE_CHECK_MS = 1500;
+/** How long after the last detected face NSFW checks still apply. */
+const FACE_GRACE_MS = 5000;
+/** Separate phone incidents before removal from the classroom. */
+const PHONE_WARNINGS_MAX = 3;
 
 function Room() {
   const { roomId } = Route.useParams();
@@ -262,6 +267,10 @@ function Room() {
   const KICK_MS = 120;
   const [afkWarn, setAfkWarn] = useState(false);
   const [phoneWarn, setPhoneWarn] = useState(false);
+  const [phoneWarnings, setPhoneWarnings] = useState(0);
+  // One warning per incident: set when a warning fires, cleared when the phone
+  // leaves frame, so three ticks of a single sighting is not three strikes.
+  const phoneWarnedRef = useRef(false);
   // Blurs video when the window loses focus, which is what screenshot tools do
   // first. See the hook for what this can and cannot actually prevent.
   const capture = useCaptureGuard(true);
@@ -272,6 +281,11 @@ function Room() {
   const [afkSeconds, setAfkSeconds] = useState(KICK_MS);
   const lastActivityRef = useRef<number>(Date.now());
   const afkWarnRef = useRef(false);
+  // Timestamp of the last frame with a face in it. The NSFW check reads this:
+  // an empty room is a wall, a chair or a bedsheet, and nsfwjs will happily
+  // score those — flagging someone who has simply stepped away is both wrong
+  // and alarming. No person in frame means nothing to moderate.
+  const faceSeenAtRef = useRef(0);
 
   // Presence detection via facial recognition (MediaPipe FaceDetector).
   // No face detected in the camera feed for IDLE_MS -> AFK warning starts.
@@ -282,6 +296,8 @@ function Room() {
     let objects: import("@mediapipe/tasks-vision").ObjectDetector | null = null;
     let phoneStrikes = 0;
     let lastPhoneCheck = 0;
+    let phoneWarnings = 0;
+    let kickedForPhone = false;
     const probe = document.createElement("video");
     probe.muted = true;
     probe.playsInline = true;
@@ -300,6 +316,7 @@ function Room() {
     };
 
     const tick = () => {
+      if (kickedForPhone) return;
       // Being in a private session IS activity — you are talking to someone.
       // The old check read videoRef, which belongs to whichever view is
       // mounted; during a private session the classroom's element is gone, so
@@ -338,6 +355,7 @@ function Room() {
       try {
         const res = detector.detectForVideo(probe, performance.now());
         if (res.detections && res.detections.length > 0) {
+          faceSeenAtRef.current = Date.now();
           bump();
         }
       } catch {
@@ -361,11 +379,36 @@ function Room() {
           if (phone) {
             phoneStrikes += 1;
             console.info(`[moderation] phone sighting ${phoneStrikes}/2`);
-            // Two consecutive sightings, so a passing hand or a dark rectangle
-            // on a desk does not accuse anyone.
-            if (phoneStrikes >= 2) setPhoneWarn(true);
+            // Two consecutive sightings before the first warning, so a passing
+            // hand or a dark rectangle on a desk does not accuse anyone.
+            if (phoneStrikes >= 2 && !phoneWarnedRef.current) {
+              phoneWarnedRef.current = true;
+              phoneWarnings += 1;
+              setPhoneWarnings(phoneWarnings);
+              setPhoneWarn(true);
+
+              if (phoneWarnings >= PHONE_WARNINGS_MAX) {
+                kickedForPhone = true;
+                void (async () => {
+                  const { data: userData } = await supabase.auth.getUser();
+                  if (userData.user) {
+                    await supabase.from("reports").insert({
+                      reporter_id: userData.user.id,
+                      reported_user_id: userData.user.id,
+                      reason: "other",
+                      notes: `Auto-flagged: phone in frame after ${PHONE_WARNINGS_MAX} warnings`,
+                    });
+                  }
+                  toast.error("Removed from classroom — phone detected repeatedly");
+                  nav({ to: "/home" });
+                })();
+              }
+            }
           } else {
             phoneStrikes = 0;
+            // Clearing the frame arms the next warning, so three separate
+            // incidents are needed rather than three ticks of one.
+            phoneWarnedRef.current = false;
             setPhoneWarn(false);
           }
         } catch {
@@ -504,6 +547,19 @@ function Room() {
       if (!camOn) return;
       attachProbe();
       if (probe.readyState < 2 || probe.videoWidth === 0) return;
+
+      // Only moderate when someone is actually on camera. Stepping away leaves
+      // a wall or a chair in frame, which the classifier can still score — and
+      // accusing an empty room is the false positive people notice most.
+      if (Date.now() - faceSeenAtRef.current > FACE_GRACE_MS) {
+        if (strikes > 0) {
+          setNsfwWarn(false);
+          setNsfwStrikes(0);
+        }
+        strikes = 0;
+        return;
+      }
+
       try {
         const unsafe = await scoreFrame();
         if (unsafe < THRESHOLD) {
@@ -1415,6 +1471,9 @@ function Room() {
         >
           <ArrowLeft className="h-5 w-5" />
         </button>
+        {/* The classroom had no branding at all — the one screen students spend
+         * the most time on. */}
+        <PathwaayMark className="h-9 w-9" />
         <div className="min-w-0">
           <div className="truncate text-sm font-semibold">{roomTitle}</div>
           <div className="flex items-center gap-1.5 text-xs text-white/50">
@@ -1433,7 +1492,7 @@ function Room() {
         </div>
       </header>
 
-      <div className="flex flex-col md:flex-row">
+      <div className="flex flex-col md:h-[calc(100vh-69px)] md:flex-row">
         {/* Grid */}
         <main className={`flex-1 p-5 ${chatOpen ? "" : ""}`}>
           {remoteParticipants.length === 0 && (
@@ -1602,17 +1661,19 @@ function Room() {
 
         {/* Interaction Center */}
         {chatOpen && (
-          <aside className="w-full shrink-0 border-t border-white/10 bg-room-card/40 p-4 md:w-80 md:border-l md:border-t-0">
-            <div className="flex items-center justify-between">
+          <aside className="flex w-full shrink-0 flex-col border-t border-white/10 bg-room-card/40 md:w-[340px] md:border-l md:border-t-0">
+            <div className="flex items-center gap-2 border-b border-white/10 px-4 py-3.5">
+              <MessageSquare className="h-4 w-4 text-primary" />
               <div className="text-sm font-bold">Doubts</div>
               {visibleDoubts.length > 0 && (
-                <span className="rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-semibold text-white/70">
+                <span className="rounded-full bg-primary/20 px-2 py-0.5 text-[11px] font-bold text-primary">
                   {visibleDoubts.length}
                 </span>
               )}
+              <span className="ml-auto text-[11px] text-white/40">This room</span>
             </div>
 
-            <div className="mt-3 max-h-[calc(100vh-340px)] space-y-3 overflow-y-auto pr-1">
+            <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto px-4 py-4">
               {visibleDoubts.length === 0 && (
                 <div className="rounded-lg border border-dashed border-white/15 px-4 py-8 text-center">
                   <MessageSquare className="mx-auto h-6 w-6 text-white/30" />
@@ -1709,17 +1770,28 @@ function Room() {
               ))}
             </div>
 
-            <div className="mt-3 flex gap-2">
-              <input
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && ask()}
-                placeholder="Ask a question..."
-                className="flex-1 rounded-lg border border-white/10 bg-room px-3 py-2 text-xs placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-primary"
-              />
-              <button onClick={ask} className="rounded-lg bg-primary px-3 hover:bg-primary/90">
-                <Send className="h-4 w-4" />
-              </button>
+            <div className="border-t border-white/10 p-3">
+              <div className="flex items-end gap-2">
+                <input
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && ask()}
+                  placeholder="Ask a question…"
+                  className="min-w-0 flex-1 rounded-lg border border-white/10 bg-room px-3.5 py-2.5 text-sm placeholder:text-white/40 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+                <button
+                  onClick={ask}
+                  disabled={!draft.trim()}
+                  aria-label="Post doubt"
+                  className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-lg bg-primary transition hover:bg-primary/90 disabled:opacity-40"
+                >
+                  <Send className="h-4 w-4" />
+                </button>
+              </div>
+              <p className="mt-2 flex items-center gap-1.5 px-0.5 text-[10px] text-white/30">
+                <PathwaayMark className="h-3.5 w-3.5" />
+                Doubts clear when you leave the room
+              </p>
             </div>
           </aside>
         )}
@@ -1843,9 +1915,16 @@ function Room() {
             </div>
             <h3 className="mt-4 text-lg font-bold text-white">Phone detected</h3>
             <p className="mt-2 text-sm text-white/70">
-              Please put your phone away and focus on the class. This clears on its own once the
-              camera stops seeing it.
+              Please put your phone away and focus on the class.
             </p>
+            <div className="mt-4 rounded-lg bg-warning/10 px-4 py-3">
+              <div className="text-xs font-semibold uppercase tracking-wide text-warning">
+                Warning {phoneWarnings} of {PHONE_WARNINGS_MAX}
+              </div>
+              <div className="mt-1 text-xs text-white/60">
+                You'll be removed from the classroom after {PHONE_WARNINGS_MAX} warnings.
+              </div>
+            </div>
             <button
               onClick={() => setPhoneWarn(false)}
               className="mt-5 w-full rounded-lg bg-warning px-4 py-2.5 text-sm font-semibold text-white hover:bg-warning/90"
