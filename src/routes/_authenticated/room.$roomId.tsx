@@ -27,6 +27,7 @@ import { RatingModal, type Ratee } from "@/components/rating-modal";
 import { supabase } from "@/integrations/supabase/client";
 import { sendFriendRequest, markPresence, clearPresence } from "@/lib/social";
 import { useWebrtcMesh } from "@/lib/use-webrtc-mesh";
+import { cn } from "@/lib/utils";
 import { useCaptureGuard } from "@/lib/use-capture-guard";
 import { Whiteboard } from "@/components/whiteboard";
 
@@ -191,8 +192,11 @@ const NSFW_STRIKES_MAX = 3;
 
 /** COCO labels that mean "a phone is in shot". */
 const PHONE_LABELS = new Set(["cell phone", "mobile phone", "telephone"]);
-const PHONE_CONFIDENCE = 0.5;
-const PHONE_CHECK_MS = 2000;
+// The COCO "cell phone" class is conservative on webcam frames — a phone held
+// at arm's length rarely clears 0.5. 0.3 catches it; two consecutive sightings
+// (below) are what keep false positives out, not the threshold alone.
+const PHONE_CONFIDENCE = 0.3;
+const PHONE_CHECK_MS = 1500;
 
 function Room() {
   const { roomId } = Route.useParams();
@@ -301,10 +305,12 @@ function Room() {
       // mounted; during a private session the classroom's element is gone, so
       // "no face found" was really "no video element", and people mid-session
       // were warned and then kicked out of the room they were actively using.
-      if (privateSessionRef.current) {
-        bump();
-        return;
-      }
+      //
+      // Note this only skips the AFK clock. Phone checks still run below —
+      // returning here outright meant phones were never detected in private
+      // sessions at all.
+      const inPrivate = privateSessionRef.current;
+      if (inPrivate) bump();
 
       const stream = streamRef.current;
       const camOn = !!stream?.getVideoTracks().some((t) => t.enabled && t.readyState === "live");
@@ -321,7 +327,7 @@ function Room() {
       }
 
       if (!camOn || probe.readyState < 2 || probe.videoWidth === 0 || !detector) {
-        if (!afkWarnRef.current && Date.now() - lastActivityRef.current >= IDLE_MS) {
+        if (!inPrivate && !afkWarnRef.current && Date.now() - lastActivityRef.current >= IDLE_MS) {
           afkWarnRef.current = true;
           setAfkWarn(true);
           setAfkSeconds(KICK_MS);
@@ -354,6 +360,7 @@ function Room() {
           );
           if (phone) {
             phoneStrikes += 1;
+            console.info(`[moderation] phone sighting ${phoneStrikes}/2`);
             // Two consecutive sightings, so a passing hand or a dark rectangle
             // on a desk does not accuse anyone.
             if (phoneStrikes >= 2) setPhoneWarn(true);
@@ -366,7 +373,7 @@ function Room() {
         }
       }
 
-      if (!afkWarnRef.current && Date.now() - lastActivityRef.current >= IDLE_MS) {
+      if (!inPrivate && !afkWarnRef.current && Date.now() - lastActivityRef.current >= IDLE_MS) {
         afkWarnRef.current = true;
         setAfkWarn(true);
         setAfkSeconds(KICK_MS);
@@ -399,17 +406,18 @@ function Room() {
           objects = await vision.ObjectDetector.createFromOptions(fileset, {
             baseOptions: {
               modelAssetPath:
-                "https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite",
+                "https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite2/float32/1/efficientdet_lite2.tflite",
               delegate: "GPU",
             },
             runningMode: "VIDEO",
             scoreThreshold: PHONE_CONFIDENCE,
-            maxResults: 8,
+            maxResults: 12,
           });
           if (cancelled) {
             objects.close();
             objects = null;
           }
+          if (objects) console.info("[moderation] phone detection active");
         } catch (err) {
           console.warn("[moderation] phone detection unavailable", err);
         }
@@ -1903,9 +1911,15 @@ function CtlBtn({
         {...rest}
         title={title}
         aria-label={title}
-        className={`flex h-11 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20 disabled:cursor-not-allowed ${
-          wide ? "gap-2 px-5" : "w-11"
-        } ${className}`}
+        // cn() runs twMerge, which is what makes a passed-in bg-* actually win.
+        // Plain template concatenation left both bg-white/10 and bg-danger in
+        // the class list, and Tailwind resolves that by stylesheet order, not
+        // by which came last in the string — so the red never applied.
+        className={cn(
+          "flex h-11 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20 disabled:cursor-not-allowed",
+          wide ? "gap-2 px-5" : "w-11",
+          className,
+        )}
       >
         {children}
       </button>
