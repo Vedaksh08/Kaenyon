@@ -547,6 +547,10 @@ export type Database = {
         Args: { _course_slug: string; _year: number };
         Returns: { name: string; slug: string; sort_order: number }[];
       };
+      record_moderation_strike: {
+        Args: { _kind: string; _classroom_id?: string | null; _score?: number | null };
+        Returns: { strike_count: number; banned_until: string | null }[];
+      };
       get_public_profiles: {
         Args: { _user_ids: string[] };
         Returns: {

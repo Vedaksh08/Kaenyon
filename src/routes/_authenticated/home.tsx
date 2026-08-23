@@ -202,7 +202,7 @@ function Home() {
               )}
             </p>
           </div>
-          <PathwaayMark className="h-11 w-11 shrink-0" />
+          <PathwaayMark className="h-14 w-14 shrink-0" />
         </div>
       </header>
 

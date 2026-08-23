@@ -582,22 +582,50 @@ function Room() {
         }
         if (confirmations < 3) return;
 
-        strikes += 1;
-        console.warn(`[moderation] strike ${strikes}/${STRIKES_MAX} (score ${unsafe.toFixed(2)})`);
-        setNsfwStrikes(strikes);
-        setNsfwWarn(true);
-        if (strikes >= STRIKES_MAX) {
-          kicked = true;
-          const { data: userData } = await supabase.auth.getUser();
-          if (userData.user) {
-            await supabase.from("reports").insert({
-              reporter_id: userData.user.id,
-              reported_user_id: userData.user.id,
-              reason: "other",
-              notes: `Auto-flagged by camera moderation (score ${unsafe.toFixed(2)})`,
-            });
-          }
-          toast.error("Removed from classroom — inappropriate content detected");
+        // Confirmed explicit content: out of the room straight away. Warning
+        // and letting it continue would leave it on everyone else's screen
+        // while the strikes counted up.
+        kicked = true;
+        console.warn(`[moderation] NSFW confirmed (score ${unsafe.toFixed(2)}) — removing`);
+
+        // Stop broadcasting before anything else, so the feed is gone even if
+        // the navigation or the network call is slow.
+        streamRef.current?.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
+        setLocalStream(null);
+        setCam(false);
+        setMic(false);
+
+        const { data: userData } = await supabase.auth.getUser();
+        if (userData.user) {
+          await supabase.from("reports").insert({
+            reporter_id: userData.user.id,
+            reported_user_id: userData.user.id,
+            reason: "other",
+            notes: `Auto-flagged by camera moderation (score ${unsafe.toFixed(2)})`,
+          });
+        }
+
+        // Strikes are counted server-side: an in-memory tally resets on
+        // refresh, and RLS would let a student clear their own ban.
+        const { data: result } = await supabase.rpc("record_moderation_strike", {
+          _kind: "nsfw",
+          _classroom_id: roomId,
+          _score: Number(unsafe.toFixed(2)),
+        });
+        const row = Array.isArray(result) ? result[0] : null;
+        const bannedUntil = row?.banned_until ? new Date(row.banned_until) : null;
+
+        if (bannedUntil && bannedUntil.getTime() > Date.now()) {
+          toast.error("You're suspended for 20 minutes for inappropriate content.");
+          nav({ to: "/suspended" });
+        } else {
+          const left = Math.max(0, STRIKES_MAX - (row?.strike_count ?? 1));
+          toast.error(
+            left > 0
+              ? `Removed — inappropriate content. ${left} more and you're suspended for 20 minutes.`
+              : "Removed from classroom — inappropriate content detected",
+          );
           nav({ to: "/home" });
         }
       } catch {
@@ -1473,7 +1501,7 @@ function Room() {
         </button>
         {/* The classroom had no branding at all — the one screen students spend
          * the most time on. */}
-        <PathwaayMark className="h-9 w-9" />
+        <PathwaayMark className="h-10 w-10" />
         <div className="min-w-0">
           <div className="truncate text-sm font-semibold">{roomTitle}</div>
           <div className="flex items-center gap-1.5 text-xs text-white/50">

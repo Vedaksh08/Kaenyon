@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Crown, Trophy } from "lucide-react";
 import { BottomNav } from "@/components/bottom-nav";
+import { PathwaayMark } from "@/components/brand";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchLeaderboard, fetchMyStats, type LeaderRow, type MyStats } from "@/lib/social";
 
@@ -64,7 +65,11 @@ function Ranks() {
 
   return (
     <div className="min-h-screen bg-background pb-24">
-      <header className="bg-primary px-5 pb-6 pt-8 text-primary-foreground">
+      <header className="bg-primary px-5 pb-6 pt-6 text-primary-foreground">
+        <div className="mb-4 flex items-center gap-2.5">
+          <PathwaayMark className="h-9 w-9" />
+          <span className="text-lg font-extrabold tracking-tight">Pathwaay</span>
+        </div>
         <div className="text-[10px] font-bold uppercase tracking-widest opacity-80">
           Your position
         </div>

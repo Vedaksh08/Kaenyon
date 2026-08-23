@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Search, MapPin, BookOpen, UserCheck, UserX, Users } from "lucide-react";
 import { toast } from "sonner";
 import { BottomNav } from "@/components/bottom-nav";
+import { PathwaayMark } from "@/components/brand";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchFriends, respondToRequest, removeFriend, type FriendRow } from "@/lib/social";
 
@@ -104,7 +105,10 @@ function Friends() {
   return (
     <div className="min-h-screen bg-background pb-24">
       <header className="px-5 pt-8">
-        <h1 className="text-2xl font-extrabold">Friends</h1>
+        <div className="flex items-center gap-3">
+          <PathwaayMark className="h-10 w-10" />
+          <h1 className="text-2xl font-extrabold">Friends</h1>
+        </div>
         <p className="mt-1 text-sm text-muted-foreground">
           People you've connected with — see who's live in a classroom.
         </p>

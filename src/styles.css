@@ -66,7 +66,13 @@
   --popover-foreground: oklch(0.21 0.05 264);
 
   --navy: oklch(0.34 0.14 264); /* #1E3A8A */
-  --brand: oklch(0.62 0.19 256); /* #3B82F6 */
+  /* Pathwaay palette, from the brand sheet. The bars in the mark are
+   * --brand-cyan / lime / amber / violet; the deep blue is the plate. */
+  --brand: oklch(0.45 0.21 264); /* #1340C4 — the logo plate blue */
+  --brand-cyan: oklch(0.74 0.16 226); /* #00C4FF */
+  --brand-lime: oklch(0.87 0.21 140); /* #7DFF5A */
+  --brand-amber: oklch(0.82 0.17 82); /* #FFC62E */
+  --brand-violet: oklch(0.66 0.22 302); /* #A855F7 */
   --brand-foreground: oklch(1 0 0);
 
   --primary: var(--brand);

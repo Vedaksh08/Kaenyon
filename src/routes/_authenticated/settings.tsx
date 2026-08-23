@@ -192,7 +192,7 @@ function Settings() {
     <div className="min-h-screen bg-background pb-28">
       <header className="border-b border-border bg-card">
         <div className="mx-auto flex max-w-2xl items-center gap-2.5 px-5 py-4">
-          <PathwaayMark className="h-9 w-9" />
+          <PathwaayMark className="h-10 w-10" />
           <h1 className="text-lg font-bold">Profile</h1>
         </div>
       </header>
