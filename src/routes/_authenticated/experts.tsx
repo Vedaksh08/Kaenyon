@@ -9,13 +9,13 @@ import { fetchFriends, respondToRequest, removeFriend, type FriendRow } from "@/
 export const Route = createFileRoute("/_authenticated/experts")({
   head: () => ({
     meta: [
-      { title: "Friends — Kaenyon" },
+      { title: "Friends — Pathwaay" },
       {
         name: "description",
         content:
-          "See which of your Kaenyon friends are online and which classroom they are studying in right now.",
+          "See which of your Pathwaay friends are online and which classroom they are studying in right now.",
       },
-      { property: "og:title", content: "Friends — Kaenyon" },
+      { property: "og:title", content: "Friends — Pathwaay" },
       {
         property: "og:description",
         content: "See which of your friends are live in a classroom right now.",

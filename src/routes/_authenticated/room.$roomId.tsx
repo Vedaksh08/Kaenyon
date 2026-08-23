@@ -126,13 +126,13 @@ function ScreenPreview({ stream }: { stream: MediaStream }) {
 export const Route = createFileRoute("/_authenticated/room/$roomId")({
   head: () => ({
     meta: [
-      { title: "Study Room — Kaenyon" },
+      { title: "Study Room — Pathwaay" },
       {
         name: "description",
         content:
-          "A live Kaenyon classroom: ask doubts, offer help and run private solving sessions.",
+          "A live Pathwaay classroom: ask doubts, offer help and run private solving sessions.",
       },
-      { property: "og:title", content: "Study Room — Kaenyon" },
+      { property: "og:title", content: "Study Room — Pathwaay" },
       { property: "og:description", content: "Live peer-to-peer doubt solving classroom." },
     ],
   }),
@@ -1829,16 +1829,30 @@ function Room() {
       {/* Rendered over the grid, so it lands in any screenshot that is taken. */}
       <div className="pointer-events-none fixed inset-0 z-[60] select-none overflow-hidden">
         <div className="absolute bottom-20 right-4 text-[10px] font-medium text-white/25">
-          {profile?.name?.trim() || "Kaenyon"} · {profile?.email ?? ""}
+          {profile?.name?.trim() || "Pathwaay"} · {profile?.email ?? ""}
         </div>
       </div>
 
       {/* A nudge, not a removal — phone detection is fuzzy, so it must never
        * eject anyone the way explicit content does. */}
       {phoneWarn && (
-        <div className="fixed left-1/2 top-4 z-[75] flex -translate-x-1/2 items-center gap-2.5 rounded-full border border-warning/40 bg-warning/15 px-4 py-2 text-sm font-medium text-warning backdrop-blur">
-          <Smartphone className="h-4 w-4 shrink-0" />
-          Phone detected — please put it away and focus on the class.
+        <div className="fixed inset-0 z-[75] flex items-center justify-center bg-warning/20 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-xl border border-warning/40 bg-room-card p-6 text-center shadow-elevated">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-warning/20 text-warning">
+              <Smartphone className="h-7 w-7" />
+            </div>
+            <h3 className="mt-4 text-lg font-bold text-white">Phone detected</h3>
+            <p className="mt-2 text-sm text-white/70">
+              Please put your phone away and focus on the class. This clears on its own once the
+              camera stops seeing it.
+            </p>
+            <button
+              onClick={() => setPhoneWarn(false)}
+              className="mt-5 w-full rounded-lg bg-warning px-4 py-2.5 text-sm font-semibold text-white hover:bg-warning/90"
+            >
+              I've put it away
+            </button>
+          </div>
         </div>
       )}
 

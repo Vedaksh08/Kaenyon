@@ -5,13 +5,13 @@ import { Camera, LogOut, Moon, Sun, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { usePlan } from "@/lib/plan-context";
 import { BottomNav } from "@/components/bottom-nav";
-import { KaenyonMark } from "@/components/brand";
+import { PathwaayMark } from "@/components/brand";
 
 export const Route = createFileRoute("/_authenticated/settings")({
   head: () => ({
     meta: [
-      { title: "Profile — Kaenyon" },
-      { name: "description", content: "Manage your Kaenyon account, profile and appearance." },
+      { title: "Profile — Pathwaay" },
+      { name: "description", content: "Manage your Pathwaay account, profile and appearance." },
     ],
   }),
   component: Settings,
@@ -192,7 +192,7 @@ function Settings() {
     <div className="min-h-screen bg-background pb-28">
       <header className="border-b border-border bg-card">
         <div className="mx-auto flex max-w-2xl items-center gap-2.5 px-5 py-4">
-          <KaenyonMark className="h-7 w-7" />
+          <PathwaayMark className="h-7 w-7" />
           <h1 className="text-lg font-bold">Profile</h1>
         </div>
       </header>

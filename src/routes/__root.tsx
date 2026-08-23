@@ -79,13 +79,13 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Kaenyon — Be Limitless" },
+      { title: "Pathwaay — Be Limitless" },
       {
         name: "description",
         content:
           "Peer-to-peer doubt solving for college students. Join silent classrooms, solve doubts, climb the ranks.",
       },
-      { property: "og:title", content: "Kaenyon — Be Limitless" },
+      { property: "og:title", content: "Pathwaay — Be Limitless" },
       { property: "og:description", content: "Peer-to-peer doubt solving for college students." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
@@ -98,6 +98,9 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         href: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap",
       },
       { rel: "stylesheet", href: appCss },
+      // Tab icon. The light mark reads better at 16px against either theme.
+      { rel: "icon", type: "image/png", href: "/logo-light.png" },
+      { rel: "apple-touch-icon", href: "/logo-light.png" },
     ],
   }),
   shellComponent: RootShell,

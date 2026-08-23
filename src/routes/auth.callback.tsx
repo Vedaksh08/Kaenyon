@@ -7,10 +7,10 @@ export const Route = createFileRoute("/auth/callback")({
   ssr: false,
   head: () => ({
     meta: [
-      { title: "Verifying — Kaenyon" },
-      { name: "description", content: "Verifying your Kaenyon email sign-in link." },
-      { property: "og:title", content: "Verifying — Kaenyon" },
-      { property: "og:description", content: "Verifying your Kaenyon email sign-in link." },
+      { title: "Verifying — Pathwaay" },
+      { name: "description", content: "Verifying your Pathwaay email sign-in link." },
+      { property: "og:title", content: "Verifying — Pathwaay" },
+      { property: "og:description", content: "Verifying your Pathwaay email sign-in link." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
     ],
@@ -92,7 +92,7 @@ function AuthCallback() {
     <div className="min-h-screen bg-background flex items-center justify-center px-4">
       <div className="w-full max-w-md rounded-2xl bg-card shadow-card p-8 text-center">
         <div className="inline-block border-[3px] border-double border-navy px-4 py-2">
-          <div className="text-xl font-extrabold tracking-tight text-navy">KAENYON</div>
+          <div className="text-xl font-extrabold tracking-tight text-navy">PATHWAAY</div>
         </div>
         {error ? (
           <>

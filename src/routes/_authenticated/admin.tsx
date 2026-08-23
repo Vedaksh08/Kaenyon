@@ -8,15 +8,15 @@ import { supabase } from "@/integrations/supabase/client";
 export const Route = createFileRoute("/_authenticated/admin")({
   head: () => ({
     meta: [
-      { title: "Moderation Dashboard — Kaenyon" },
+      { title: "Moderation Dashboard — Pathwaay" },
       {
         name: "description",
-        content: "Review reports, suspensions and moderation activity across Kaenyon.",
+        content: "Review reports, suspensions and moderation activity across Pathwaay.",
       },
-      { property: "og:title", content: "Moderation Dashboard — Kaenyon" },
+      { property: "og:title", content: "Moderation Dashboard — Pathwaay" },
       {
         property: "og:description",
-        content: "Review reports, suspensions and moderation activity across Kaenyon.",
+        content: "Review reports, suspensions and moderation activity across Pathwaay.",
       },
     ],
   }),
@@ -203,7 +203,7 @@ function Admin() {
   return (
     <div className="flex min-h-screen bg-background">
       <aside className="w-60 shrink-0 bg-room text-white p-5">
-        <div className="text-lg font-extrabold">KAENYON</div>
+        <div className="text-lg font-extrabold">PATHWAAY</div>
         <div className="mt-1 text-[10px] uppercase tracking-widest text-white/50">Admin Panel</div>
         <nav className="mt-6 space-y-1">
           {TABS.map((t) => (

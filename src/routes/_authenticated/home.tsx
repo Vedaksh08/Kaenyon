@@ -19,18 +19,18 @@ import {
 } from "lucide-react";
 import { usePlan } from "@/lib/plan-context";
 import { BottomNav } from "@/components/bottom-nav";
-import { KaenyonMark } from "@/components/brand";
+import { PathwaayMark } from "@/components/brand";
 import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/_authenticated/home")({
   head: () => ({
     meta: [
-      { title: "Your Subjects — Kaenyon" },
+      { title: "Your Subjects — Pathwaay" },
       {
         name: "description",
         content: "Pick a subject and jump into a live classroom to ask or solve doubts.",
       },
-      { property: "og:title", content: "Your Subjects — Kaenyon" },
+      { property: "og:title", content: "Your Subjects — Pathwaay" },
       {
         property: "og:description",
         content: "Pick a subject and jump into a live classroom to ask or solve doubts.",
@@ -43,8 +43,6 @@ export const Route = createFileRoute("/_authenticated/home")({
 interface SubjectRow {
   slug: string;
   name: string;
-  /** Which semester of the student's course this subject belongs to. */
-  semester?: number;
   live: number;
 }
 
@@ -152,7 +150,6 @@ function Home() {
         subjectRows.map((s) => ({
           slug: s.slug,
           name: s.name,
-          semester: "semester" in s ? (s.semester as number) : undefined,
           live: liveBySubject.get(s.slug) ?? 0,
         })),
       );
@@ -181,9 +178,9 @@ function Home() {
 
   const totalLive = subjects.reduce((sum, s) => sum + s.live, 0);
   const courseLabel = profile?.course?.trim() || "your course";
-  // Grouped by semester rather than a "recommended" rail: these are the exact
-  // subjects for this year, so the useful split is sem 1 vs sem 2.
-  const semesters = [...new Set(subjects.map((s) => s.semester ?? 0))].sort((a, b) => a - b);
+  // One flat list. Semesters are an academic detail, not something a student
+  // needs when picking a room, and a subject taught across both semesters of a
+  // year is one classroom — showing it under two headings implied two rooms.
 
   return (
     <div className="min-h-screen bg-background pb-24">
@@ -205,7 +202,7 @@ function Home() {
               )}
             </p>
           </div>
-          <KaenyonMark className="h-8 w-8 shrink-0" />
+          <PathwaayMark className="h-8 w-8 shrink-0" />
         </div>
       </header>
 
@@ -226,41 +223,32 @@ function Home() {
           </div>
         </div>
       ) : (
-        <>
-          {semesters.map((sem) => {
-            const rows = subjects.filter((s) => (s.semester ?? 0) === sem);
-            if (rows.length === 0) return null;
-            return (
-              <section key={sem} className="mt-8 px-5">
-                <h2 className="flex items-center gap-1.5 text-sm font-bold text-foreground">
-                  <Sparkles className="h-4 w-4 text-primary" />
-                  {sem > 0 ? `Semester ${sem}` : "Your subjects"}
-                </h2>
-                <div className="mt-3 grid grid-cols-2 gap-3">
-                  {rows.map((s) => {
-                    const { icon: Icon, className } = iconFor(s.name);
-                    return (
-                      <Link
-                        key={s.slug}
-                        to="/subject/$subject"
-                        params={{ subject: s.slug }}
-                        className="relative flex items-center gap-3 rounded-xl bg-card p-4 shadow-card hover:shadow-elevated"
-                      >
-                        <div
-                          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${className}`}
-                        >
-                          <Icon className="h-5 w-5" />
-                        </div>
-                        <div className="min-w-0 text-sm font-semibold leading-tight">{s.name}</div>
-                        {s.live > 0 && <LiveDot count={s.live} />}
-                      </Link>
-                    );
-                  })}
-                </div>
-              </section>
-            );
-          })}
-        </>
+        <section className="mt-8 px-5">
+          <h2 className="flex items-center gap-1.5 text-sm font-bold text-foreground">
+            <Sparkles className="h-4 w-4 text-primary" /> Your subjects
+          </h2>
+          <div className="mt-3 grid grid-cols-2 gap-3">
+            {subjects.map((s) => {
+              const { icon: Icon, className } = iconFor(s.name);
+              return (
+                <Link
+                  key={s.slug}
+                  to="/subject/$subject"
+                  params={{ subject: s.slug }}
+                  className="relative flex items-center gap-3 rounded-xl bg-card p-4 shadow-card hover:shadow-elevated"
+                >
+                  <div
+                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${className}`}
+                  >
+                    <Icon className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0 text-sm font-semibold leading-tight">{s.name}</div>
+                  {s.live > 0 && <LiveDot count={s.live} />}
+                </Link>
+              );
+            })}
+          </div>
+        </section>
       )}
 
       <BottomNav />

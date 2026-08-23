@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { ArrowLeft, MailCheck } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { SocialAuthButtons } from "@/components/social-auth";
-import { KaenyonLogo } from "@/components/brand";
+import { PathwaayLogo } from "@/components/brand";
 
 export const Route = createFileRoute("/login")({
   ssr: false,
@@ -17,15 +17,15 @@ export const Route = createFileRoute("/login")({
   },
   head: () => ({
     meta: [
-      { title: "Sign in — Kaenyon" },
+      { title: "Sign in — Pathwaay" },
       {
         name: "description",
-        content: "Sign in to Kaenyon and solve doubts live with students on your course.",
+        content: "Sign in to Pathwaay and solve doubts live with students on your course.",
       },
-      { property: "og:title", content: "Sign in — Kaenyon" },
+      { property: "og:title", content: "Sign in — Pathwaay" },
       {
         property: "og:description",
-        content: "Sign in to Kaenyon and solve doubts live with students on your course.",
+        content: "Sign in to Pathwaay and solve doubts live with students on your course.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
@@ -62,7 +62,7 @@ function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-background px-4 py-10">
       <div className="w-full max-w-sm">
         <div className="flex justify-center">
-          <KaenyonLogo size="lg" />
+          <PathwaayLogo size="lg" />
         </div>
 
         {sent ? (
@@ -85,7 +85,7 @@ function LoginPage() {
           </div>
         ) : (
           <div className="mt-10 rounded-2xl border border-border bg-card p-8 shadow-sm">
-            <h1 className="text-center text-xl font-bold">Sign in to Kaenyon</h1>
+            <h1 className="text-center text-xl font-bold">Sign in to Pathwaay</h1>
             <p className="mt-1.5 text-center text-sm text-muted-foreground">
               No password needed — we'll email you a secure link.
             </p>
@@ -118,7 +118,7 @@ function LoginPage() {
         )}
 
         <p className="mt-6 text-center text-xs leading-relaxed text-muted-foreground">
-          New to Kaenyon? Entering your email above creates your account.
+          New to Pathwaay? Entering your email above creates your account.
         </p>
       </div>
     </div>

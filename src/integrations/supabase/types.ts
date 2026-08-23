@@ -545,7 +545,7 @@ export type Database = {
       };
       get_course_subjects: {
         Args: { _course_slug: string; _year: number };
-        Returns: { name: string; semester: number; slug: string; sort_order: number }[];
+        Returns: { name: string; slug: string; sort_order: number }[];
       };
       get_public_profiles: {
         Args: { _user_ids: string[] };

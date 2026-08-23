@@ -2,13 +2,13 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { KaenyonLogo } from "@/components/brand";
+import { PathwaayLogo } from "@/components/brand";
 
 export const Route = createFileRoute("/onboarding")({
   ssr: false,
   head: () => ({
     meta: [
-      { title: "Complete your profile — Kaenyon" },
+      { title: "Complete your profile — Pathwaay" },
       { name: "description", content: "Tell us about your course so we can match you to peers." },
     ],
   }),
@@ -159,7 +159,7 @@ function Onboarding() {
     <div className="flex min-h-screen items-center justify-center bg-background px-4 py-10">
       <div className="w-full max-w-md">
         <div className="flex justify-center">
-          <KaenyonLogo size="lg" />
+          <PathwaayLogo size="lg" />
         </div>
 
         <div className="mt-8 rounded-2xl border border-border bg-card p-8 shadow-sm">
