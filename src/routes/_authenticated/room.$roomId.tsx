@@ -15,6 +15,9 @@ import {
   Check,
   MonitorUp,
   PenLine,
+  PhoneOff,
+  Smartphone,
+  EyeOff,
   ShieldAlert,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -24,6 +27,7 @@ import { RatingModal, type Ratee } from "@/components/rating-modal";
 import { supabase } from "@/integrations/supabase/client";
 import { sendFriendRequest, markPresence, clearPresence } from "@/lib/social";
 import { useWebrtcMesh } from "@/lib/use-webrtc-mesh";
+import { useCaptureGuard } from "@/lib/use-capture-guard";
 import { Whiteboard } from "@/components/whiteboard";
 
 /**
@@ -185,6 +189,11 @@ interface Doubt {
 /** Consecutive unsafe samples before removal from the classroom. */
 const NSFW_STRIKES_MAX = 3;
 
+/** COCO labels that mean "a phone is in shot". */
+const PHONE_LABELS = new Set(["cell phone", "mobile phone", "telephone"]);
+const PHONE_CONFIDENCE = 0.5;
+const PHONE_CHECK_MS = 2000;
+
 function Room() {
   const { roomId } = Route.useParams();
   const nav = useNavigate();
@@ -248,6 +257,10 @@ function Room() {
   const IDLE_MS = 60_000;
   const KICK_MS = 120;
   const [afkWarn, setAfkWarn] = useState(false);
+  const [phoneWarn, setPhoneWarn] = useState(false);
+  // Blurs video when the window loses focus, which is what screenshot tools do
+  // first. See the hook for what this can and cannot actually prevent.
+  const capture = useCaptureGuard(true);
   // Read inside the AFK timer, which is created once and would otherwise close
   // over a stale `privateSession`.
   const privateSessionRef = useRef(false);
@@ -261,6 +274,10 @@ function Room() {
   useEffect(() => {
     const SAMPLE_MS = 1500;
     let detector: import("@mediapipe/tasks-vision").FaceDetector | null = null;
+    // Second model, same probe frame: spots a phone held up to the camera.
+    let objects: import("@mediapipe/tasks-vision").ObjectDetector | null = null;
+    let phoneStrikes = 0;
+    let lastPhoneCheck = 0;
     const probe = document.createElement("video");
     probe.muted = true;
     probe.playsInline = true;
@@ -321,6 +338,34 @@ function Room() {
         // transient errors — ignore
       }
 
+      // Phone check runs on the same frame but less often — object detection is
+      // heavier than face detection and a phone does not appear for one frame.
+      const now = Date.now();
+      if (objects && now - lastPhoneCheck >= PHONE_CHECK_MS) {
+        lastPhoneCheck = now;
+        try {
+          const res = objects.detectForVideo(probe, performance.now());
+          const phone = (res.detections ?? []).some((d) =>
+            (d.categories ?? []).some(
+              (c) =>
+                PHONE_LABELS.has((c.categoryName ?? "").toLowerCase()) &&
+                (c.score ?? 0) >= PHONE_CONFIDENCE,
+            ),
+          );
+          if (phone) {
+            phoneStrikes += 1;
+            // Two consecutive sightings, so a passing hand or a dark rectangle
+            // on a desk does not accuse anyone.
+            if (phoneStrikes >= 2) setPhoneWarn(true);
+          } else {
+            phoneStrikes = 0;
+            setPhoneWarn(false);
+          }
+        } catch {
+          // transient errors — ignore
+        }
+      }
+
       if (!afkWarnRef.current && Date.now() - lastActivityRef.current >= IDLE_MS) {
         afkWarnRef.current = true;
         setAfkWarn(true);
@@ -348,6 +393,26 @@ function Room() {
           detector = null;
           return;
         }
+        // Best-effort: if the model cannot be fetched, face detection and the
+        // rest of the room carry on without phone warnings.
+        try {
+          objects = await vision.ObjectDetector.createFromOptions(fileset, {
+            baseOptions: {
+              modelAssetPath:
+                "https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite",
+              delegate: "GPU",
+            },
+            runningMode: "VIDEO",
+            scoreThreshold: PHONE_CONFIDENCE,
+            maxResults: 8,
+          });
+          if (cancelled) {
+            objects.close();
+            objects = null;
+          }
+        } catch (err) {
+          console.warn("[moderation] phone detection unavailable", err);
+        }
         interval = window.setInterval(tick, SAMPLE_MS);
       } catch (err) {
         console.error("Face detector failed to load", err);
@@ -359,6 +424,7 @@ function Room() {
       if (interval) window.clearInterval(interval);
       probe.srcObject = null;
       detector?.close();
+      objects?.close();
     };
   }, []);
 
@@ -1490,7 +1556,7 @@ function Room() {
           {/* Bottom controls */}
           <div className="fixed bottom-6 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-full bg-room-card/95 px-3 py-2 shadow-elevated backdrop-blur">
             <CtlBtn
-              title="Mic is disabled in the classroom — join a Private Session to talk"
+              title="Mic off — the classroom is silent. Join a private session to talk."
               onClick={() =>
                 toast("Mic is disabled in the classroom. Join a Private Session to talk.")
               }
@@ -1499,22 +1565,29 @@ function Room() {
               <MicOff className="h-5 w-5" />
             </CtlBtn>
             <CtlBtn
-              title={cam ? "Turn camera off" : "Turn camera on"}
+              title={
+                cam ? "Camera is on — click to turn it off" : "Camera is off — click to turn it on"
+              }
               onClick={toggleCam}
               className={cam ? "bg-success/20 text-success" : "bg-danger/20 text-danger"}
             >
               {cam ? <Video className="h-5 w-5" /> : <VideoOff className="h-5 w-5" />}
             </CtlBtn>
 
-            <CtlBtn title="Interaction Center" onClick={() => setChatOpen((v) => !v)}>
+            <CtlBtn
+              title={chatOpen ? "Hide doubts panel" : "Show doubts panel"}
+              onClick={() => setChatOpen((v) => !v)}
+            >
               <MessageSquare className="h-5 w-5" />
             </CtlBtn>
             <CtlBtn
-              title="Leave"
+              title="Leave classroom"
+              wide
               onClick={() => nav({ to: "/home" })}
-              className="bg-danger text-white"
+              className="bg-danger font-semibold text-white hover:bg-danger/90"
             >
-              <X className="h-5 w-5" />
+              <PhoneOff className="h-5 w-5" />
+              <span className="text-sm">Leave</span>
             </CtlBtn>
           </div>
         </main>
@@ -1718,6 +1791,49 @@ function Room() {
           </div>
         </div>
       )}
+      {/* Screen-capture deterrents. A page cannot block a real screenshot, so
+       * this does the two things that do help: hide the video the moment focus
+       * leaves (which is what the OS snipper does first), and stamp the frame
+       * with who is watching, so anything that IS captured is traceable. */}
+      {capture.obscured && (
+        <div className="fixed inset-0 z-[95] flex items-center justify-center bg-room/95 backdrop-blur-xl">
+          <div className="text-center">
+            <EyeOff className="mx-auto h-8 w-8 text-white/60" />
+            <p className="mt-3 text-sm font-semibold text-white">Video hidden</p>
+            <p className="mt-1 text-xs text-white/60">
+              Click back into the window to rejoin the class.
+            </p>
+          </div>
+        </div>
+      )}
+      {capture.warned && (
+        <div className="fixed left-1/2 top-4 z-[96] flex -translate-x-1/2 items-center gap-2.5 rounded-full border border-danger/40 bg-danger/20 px-4 py-2 text-sm font-medium text-white backdrop-blur">
+          <ShieldAlert className="h-4 w-4 shrink-0" />
+          Screenshots of the classroom are not allowed.
+          <button
+            onClick={capture.dismissWarning}
+            className="ml-1 rounded px-1.5 text-white/70 hover:text-white"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+      {/* Rendered over the grid, so it lands in any screenshot that is taken. */}
+      <div className="pointer-events-none fixed inset-0 z-[60] select-none overflow-hidden">
+        <div className="absolute bottom-20 right-4 text-[10px] font-medium text-white/25">
+          {profile?.name?.trim() || "Kaenyon"} · {profile?.email ?? ""}
+        </div>
+      </div>
+
+      {/* A nudge, not a removal — phone detection is fuzzy, so it must never
+       * eject anyone the way explicit content does. */}
+      {phoneWarn && (
+        <div className="fixed left-1/2 top-4 z-[75] flex -translate-x-1/2 items-center gap-2.5 rounded-full border border-warning/40 bg-warning/15 px-4 py-2 text-sm font-medium text-warning backdrop-blur">
+          <Smartphone className="h-4 w-4 shrink-0" />
+          Phone detected — please put it away and focus on the class.
+        </div>
+      )}
+
       {nsfwWarn && (
         <NsfwWarning
           strikes={nsfwStrikes}
@@ -1766,18 +1882,42 @@ function Room() {
   );
 }
 
+/**
+ * Round control-bar button with a label that appears on hover.
+ *
+ * The native `title` tooltip takes about a second to appear and cannot be
+ * styled, which is no good for controls people need to identify at a glance
+ * mid-call. `title` is still set so the label reaches screen readers and
+ * touch users who long-press.
+ */
 function CtlBtn({
   children,
   className = "",
+  wide = false,
+  title,
   ...rest
-}: React.ButtonHTMLAttributes<HTMLButtonElement>) {
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & { wide?: boolean }) {
   return (
-    <button
-      {...rest}
-      className={`flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20 disabled:cursor-not-allowed ${className}`}
-    >
-      {children}
-    </button>
+    <div className="group relative flex">
+      <button
+        {...rest}
+        title={title}
+        aria-label={title}
+        className={`flex h-11 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20 disabled:cursor-not-allowed ${
+          wide ? "gap-2 px-5" : "w-11"
+        } ${className}`}
+      >
+        {children}
+      </button>
+      {title && (
+        <span
+          role="tooltip"
+          className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 hidden max-w-[220px] -translate-x-1/2 whitespace-nowrap rounded-md bg-slate-900 px-2.5 py-1.5 text-xs font-medium text-white shadow-elevated ring-1 ring-white/10 group-hover:block"
+        >
+          {title}
+        </span>
+      )}
+    </div>
   );
 }
 
@@ -2348,7 +2488,13 @@ function PrivateSession({
       {/* Bottom controls */}
       <div className="fixed bottom-6 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-full bg-room-card/95 px-3 py-2 shadow-elevated backdrop-blur">
         <CtlBtn
-          title={mutedByMod ? "The moderator has muted you" : mic ? "Mute mic" : "Unmute mic"}
+          title={
+            mutedByMod
+              ? "The moderator has muted you"
+              : mic
+                ? "Mic is on — click to mute yourself"
+                : "Mic is muted — click to unmute"
+          }
           onClick={() => {
             // A moderator mute is not something you can undo yourself.
             if (mutedByMod) {
@@ -2368,18 +2514,22 @@ function PrivateSession({
           {mic && !mutedByMod ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}
         </CtlBtn>
         <CtlBtn
-          title={cam ? "Turn camera off" : "Turn camera on"}
+          title={
+            cam ? "Camera is on — click to turn it off" : "Camera is off — click to turn it on"
+          }
           onClick={onToggleCam}
           className={cam ? "bg-success/20 text-success" : "bg-danger/20 text-danger"}
         >
           {cam ? <Video className="h-5 w-5" /> : <VideoOff className="h-5 w-5" />}
         </CtlBtn>
         <CtlBtn
-          title="Leave private session"
+          title="End the private session and return to the classroom"
+          wide
           onClick={() => onReturn(all)}
-          className="bg-danger text-white"
+          className="bg-danger font-semibold text-white hover:bg-danger/90"
         >
-          <X className="h-5 w-5" />
+          <PhoneOff className="h-5 w-5" />
+          <span className="text-sm">End call</span>
         </CtlBtn>
       </div>
 
