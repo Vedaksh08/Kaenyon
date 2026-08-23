@@ -105,6 +105,54 @@ export type Database = {
           },
         ];
       };
+      courses: {
+        Row: {
+          created_at: string;
+          degree: string;
+          duration_years: number;
+          name: string;
+          slug: string;
+        };
+        Insert: {
+          created_at?: string;
+          degree: string;
+          duration_years: number;
+          name: string;
+          slug: string;
+        };
+        Update: {
+          created_at?: string;
+          degree?: string;
+          duration_years?: number;
+          name?: string;
+          slug?: string;
+        };
+        Relationships: [];
+      };
+      course_subjects: {
+        Row: {
+          course_slug: string;
+          id: string;
+          semester: number;
+          sort_order: number;
+          subject_slug: string;
+        };
+        Insert: {
+          course_slug: string;
+          id?: string;
+          semester: number;
+          sort_order?: number;
+          subject_slug: string;
+        };
+        Update: {
+          course_slug?: string;
+          id?: string;
+          semester?: number;
+          sort_order?: number;
+          subject_slug?: string;
+        };
+        Relationships: [];
+      };
       course_subject_map: {
         Row: {
           course_key: string;
@@ -231,7 +279,9 @@ export type Database = {
           avatar_url: string | null;
           college: string;
           course: string;
+          course_slug: string | null;
           created_at: string;
+          degree: string | null;
           dob: string | null;
           email: string;
           id: string;
@@ -245,7 +295,9 @@ export type Database = {
           avatar_url?: string | null;
           college?: string;
           course?: string;
+          course_slug?: string | null;
           created_at?: string;
+          degree?: string | null;
           dob?: string | null;
           email?: string;
           id: string;
@@ -259,7 +311,9 @@ export type Database = {
           avatar_url?: string | null;
           college?: string;
           course?: string;
+          course_slug?: string | null;
           created_at?: string;
+          degree?: string | null;
           dob?: string | null;
           email?: string;
           id?: string;
@@ -488,6 +542,10 @@ export type Database = {
           name: string;
           year: string;
         }[];
+      };
+      get_course_subjects: {
+        Args: { _course_slug: string; _year: number };
+        Returns: { name: string; semester: number; slug: string; sort_order: number }[];
       };
       get_public_profiles: {
         Args: { _user_ids: string[] };

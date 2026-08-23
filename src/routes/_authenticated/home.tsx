@@ -10,6 +10,11 @@ import {
   ShieldCheck,
   Sparkles,
   Terminal,
+  Sigma,
+  Atom,
+  FlaskConical,
+  Cpu,
+  Building2,
   type LucideIcon,
 } from "lucide-react";
 import { usePlan } from "@/lib/plan-context";
@@ -38,23 +43,58 @@ export const Route = createFileRoute("/_authenticated/home")({
 interface SubjectRow {
   slug: string;
   name: string;
+  /** Which semester of the student's course this subject belongs to. */
+  semester?: number;
   live: number;
 }
 
-// Presentation only. Subjects come from the database — an earlier version
-// hardcoded a 44-subject catalogue per course, which meant students on any
-// course but CS were shown links to subjects that no longer exist.
-const ICONS: Record<string, { icon: LucideIcon; className: string }> = {
-  "computer-science": { icon: Laptop, className: "bg-slate-900 text-white" },
-  ai: { icon: Bot, className: "bg-violet-500 text-white" },
-  "data-structures": { icon: Binary, className: "bg-teal-500 text-white" },
-  "software-engineering": { icon: Layers, className: "bg-emerald-500 text-white" },
-  "operating-systems": { icon: Terminal, className: "bg-zinc-800 text-white" },
-  "web-development": { icon: Code2, className: "bg-orange-500 text-white" },
-  "cyber-security": { icon: ShieldCheck, className: "bg-rose-500 text-white" },
-};
+// Icons are chosen by keyword, not by slug. With 572 real subjects across 24
+// courses a per-slug map is unmaintainable, and the old one listed the seven
+// placeholder subjects that no longer exist.
+const ICON_RULES: Array<{ match: RegExp; icon: LucideIcon; className: string }> = [
+  { match: /security|cyber|crypt/i, icon: ShieldCheck, className: "bg-rose-500 text-white" },
+  { match: /web|full.?stack|frontend/i, icon: Code2, className: "bg-orange-500 text-white" },
+  {
+    match: /data structure|algorithm|discrete/i,
+    icon: Binary,
+    className: "bg-teal-500 text-white",
+  },
+  {
+    match: /artificial intelligence|machine learning|neural|\bai\b/i,
+    icon: Bot,
+    className: "bg-violet-500 text-white",
+  },
+  {
+    match: /operating system|linux|unix|network/i,
+    icon: Terminal,
+    className: "bg-zinc-800 text-white",
+  },
+  {
+    match: /programming|software|compiler|python|java|\bc\+\+/i,
+    icon: Laptop,
+    className: "bg-slate-900 text-white",
+  },
+  { match: /database|dbms|\bsql\b/i, icon: Layers, className: "bg-emerald-500 text-white" },
+  { match: /math|calculus|algebra|statistic/i, icon: Sigma, className: "bg-indigo-500 text-white" },
+  { match: /physic|mechanic|thermo|fluid/i, icon: Atom, className: "bg-sky-500 text-white" },
+  { match: /chemi|material|metallurg/i, icon: FlaskConical, className: "bg-amber-500 text-white" },
+  {
+    match: /electr|circuit|signal|electronic/i,
+    icon: Cpu,
+    className: "bg-yellow-500 text-white",
+  },
+  {
+    match: /civil|structur|survey|construct/i,
+    icon: Building2,
+    className: "bg-stone-600 text-white",
+  },
+];
 
 const FALLBACK = { icon: BookOpen, className: "bg-primary text-primary-foreground" };
+
+function iconFor(name: string) {
+  return ICON_RULES.find((r) => r.match.test(name)) ?? FALLBACK;
+}
 
 function Home() {
   const { profile } = usePlan();
@@ -67,10 +107,30 @@ function Home() {
     let cancelled = false;
 
     const load = async () => {
-      const [{ data: subjectRows }, { data: classrooms }] = await Promise.all([
-        supabase.from("subjects").select("slug, name").order("name"),
-        supabase.from("classrooms").select("id, subject_slug"),
-      ]);
+      // Only the subjects this student actually studies: their course, and the
+      // two semesters of their year. Showing all 572 would be meaningless — a
+      // Civil student has no business in a Quantum Computing room.
+      const { data: me } = await supabase.auth.getUser();
+      const uid = me.user?.id;
+      if (!uid) return;
+      const { data: prof } = await supabase
+        .from("profiles")
+        .select("course_slug, year")
+        .eq("id", uid)
+        .maybeSingle();
+      if (cancelled) return;
+
+      const yearNum = Math.max(1, parseInt(prof?.year ?? "1", 10) || 1);
+      const { data: courseSubjects } = prof?.course_slug
+        ? await supabase.rpc("get_course_subjects", {
+            _course_slug: prof.course_slug,
+            _year: yearNum,
+          })
+        : { data: null };
+      if (cancelled) return;
+
+      const subjectRows = courseSubjects ?? [];
+      const { data: classrooms } = await supabase.from("classrooms").select("id, subject_slug");
       if (cancelled) return;
 
       // One presence query for the whole page rather than per subject.
@@ -89,9 +149,10 @@ function Home() {
       }
 
       setSubjects(
-        (subjectRows ?? []).map((s) => ({
+        subjectRows.map((s) => ({
           slug: s.slug,
           name: s.name,
+          semester: "semester" in s ? (s.semester as number) : undefined,
           live: liveBySubject.get(s.slug) ?? 0,
         })),
       );
@@ -119,11 +180,10 @@ function Home() {
   }, []);
 
   const totalLive = subjects.reduce((sum, s) => sum + s.live, 0);
-  // Busiest subjects lead, so the rail surfaces where people actually are.
-  const ordered = [...subjects].sort((a, b) => b.live - a.live);
-  const featured = ordered.slice(0, 5);
-  const rest = ordered.slice(5);
-  const courseLabel = profile?.course?.trim().toUpperCase() || "YOU";
+  const courseLabel = profile?.course?.trim() || "your course";
+  // Grouped by semester rather than a "recommended" rail: these are the exact
+  // subjects for this year, so the useful split is sem 1 vs sem 2.
+  const semesters = [...new Set(subjects.map((s) => s.semester ?? 0))].sort((a, b) => a - b);
 
   return (
     <div className="min-h-screen bg-background pb-24">
@@ -141,7 +201,7 @@ function Home() {
                   {totalLive} studying right now
                 </span>
               ) : (
-                `Ready to master ${courseLabel.toLowerCase()} today?`
+                `${courseLabel} · ${profile?.year ?? ""}`.trim()
               )}
             </p>
           </div>
@@ -159,67 +219,47 @@ function Home() {
         <div className="mt-10 px-5">
           <div className="rounded-xl border border-dashed border-border p-10 text-center">
             <BookOpen className="mx-auto h-8 w-8 text-muted-foreground" />
-            <p className="mt-3 text-sm font-medium">No subjects yet</p>
+            <p className="mt-3 text-sm font-medium">No subjects for your year yet</p>
             <p className="mt-1 text-sm text-muted-foreground">
-              Subjects will appear here once they're added.
+              Check your course and year in your profile.
             </p>
           </div>
         </div>
       ) : (
         <>
-          <section className="mt-8">
-            <h2 className="flex items-center gap-1 px-5 text-sm font-bold text-foreground">
-              <Sparkles className="h-4 w-4 text-primary" /> Recommended for {courseLabel}
-            </h2>
-            <div className="mt-3 flex gap-3 overflow-x-auto px-5 pb-2">
-              {featured.map((s) => {
-                const { icon: Icon, className } = ICONS[s.slug] ?? FALLBACK;
-                return (
-                  <Link
-                    key={s.slug}
-                    to="/subject/$subject"
-                    params={{ subject: s.slug }}
-                    className="relative flex w-32 shrink-0 flex-col items-start gap-3 rounded-xl bg-card p-4 shadow-card hover:shadow-elevated"
-                  >
-                    <div
-                      className={`flex h-10 w-10 items-center justify-center rounded-lg ${className}`}
-                    >
-                      <Icon className="h-5 w-5" />
-                    </div>
-                    <div className="text-sm font-semibold leading-tight">{s.name}</div>
-                    {s.live > 0 && <LiveDot count={s.live} />}
-                  </Link>
-                );
-              })}
-            </div>
-          </section>
-
-          {rest.length > 0 && (
-            <section className="mt-8 px-5">
-              <h2 className="text-sm font-bold">Explore other topics</h2>
-              <div className="mt-3 grid grid-cols-2 gap-3">
-                {rest.map((s) => {
-                  const { icon: Icon, className } = ICONS[s.slug] ?? FALLBACK;
-                  return (
-                    <Link
-                      key={s.slug}
-                      to="/subject/$subject"
-                      params={{ subject: s.slug }}
-                      className="relative flex items-center gap-3 rounded-xl bg-card p-4 shadow-card hover:shadow-elevated"
-                    >
-                      <div
-                        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${className}`}
+          {semesters.map((sem) => {
+            const rows = subjects.filter((s) => (s.semester ?? 0) === sem);
+            if (rows.length === 0) return null;
+            return (
+              <section key={sem} className="mt-8 px-5">
+                <h2 className="flex items-center gap-1.5 text-sm font-bold text-foreground">
+                  <Sparkles className="h-4 w-4 text-primary" />
+                  {sem > 0 ? `Semester ${sem}` : "Your subjects"}
+                </h2>
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                  {rows.map((s) => {
+                    const { icon: Icon, className } = iconFor(s.name);
+                    return (
+                      <Link
+                        key={s.slug}
+                        to="/subject/$subject"
+                        params={{ subject: s.slug }}
+                        className="relative flex items-center gap-3 rounded-xl bg-card p-4 shadow-card hover:shadow-elevated"
                       >
-                        <Icon className="h-5 w-5" />
-                      </div>
-                      <div className="min-w-0 truncate text-sm font-semibold">{s.name}</div>
-                      {s.live > 0 && <LiveDot count={s.live} />}
-                    </Link>
-                  );
-                })}
-              </div>
-            </section>
-          )}
+                        <div
+                          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${className}`}
+                        >
+                          <Icon className="h-5 w-5" />
+                        </div>
+                        <div className="min-w-0 text-sm font-semibold leading-tight">{s.name}</div>
+                        {s.live > 0 && <LiveDot count={s.live} />}
+                      </Link>
+                    );
+                  })}
+                </div>
+              </section>
+            );
+          })}
         </>
       )}
 

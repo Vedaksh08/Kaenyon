@@ -17,17 +17,42 @@ export const Route = createFileRoute("/onboarding")({
 
 const YEARS = ["1st Year", "2nd Year", "3rd Year", "4th Year"];
 
+interface Course {
+  slug: string;
+  name: string;
+  degree: string;
+  duration_years: number;
+}
+
 function Onboarding() {
   const nav = useNavigate();
   const [checking, setChecking] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [courses, setCourses] = useState<Course[]>([]);
   const [form, setForm] = useState({
     name: "",
     dob: "",
-    course: "",
+    degree: "",
+    courseSlug: "",
     college: "",
     year: YEARS[0],
   });
+
+  // The course list drives which subjects a student sees, so load it up front.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const { data } = await supabase
+        .from("courses")
+        .select("slug, name, degree, duration_years")
+        .order("degree")
+        .order("name");
+      if (!cancelled && data) setCourses(data as Course[]);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Anyone who already finished this should never see it again, and a Google
   // sign-in gives us a name up front worth pre-filling.
@@ -42,7 +67,7 @@ function Onboarding() {
       }
       const { data: prof } = await supabase
         .from("profiles")
-        .select("name, dob, course, college, year, onboarded_at")
+        .select("name, dob, degree, course_slug, college, year, onboarded_at")
         .eq("id", user.id)
         .maybeSingle();
       if (cancelled) return;
@@ -55,7 +80,8 @@ function Onboarding() {
         ...f,
         name: prof?.name?.trim() || meta.full_name || meta.name || "",
         dob: prof?.dob ?? "",
-        course: prof?.course ?? "",
+        degree: prof?.degree ?? "",
+        courseSlug: prof?.course_slug ?? "",
         college: prof?.college ?? "",
         year: prof?.year || YEARS[0],
       }));
@@ -76,6 +102,14 @@ function Onboarding() {
       toast.error("Please enter your full name");
       return;
     }
+    if (!form.degree) {
+      toast.error("Please choose your degree");
+      return;
+    }
+    if (!form.courseSlug) {
+      toast.error("Please choose your course");
+      return;
+    }
     setSaving(true);
     const { data: userData } = await supabase.auth.getUser();
     const user = userData.user;
@@ -89,7 +123,10 @@ function Onboarding() {
       .update({
         name: form.name.trim(),
         dob: form.dob || null,
-        course: form.course.trim(),
+        degree: form.degree,
+        course_slug: form.courseSlug,
+        // Keep the free-text column in step for anything still reading it.
+        course: courses.find((c) => c.slug === form.courseSlug)?.name ?? "",
         college: form.college.trim(),
         year: form.year,
         email: user.email ?? "",
@@ -103,6 +140,12 @@ function Onboarding() {
     }
     nav({ to: "/home", replace: true });
   };
+
+  // A 3-year B.Sc has no 4th year, so do not offer one.
+  const coursesForDegree = courses.filter((c) => c.degree === form.degree);
+  const selectedCourse = courses.find((c) => c.slug === form.courseSlug) ?? null;
+  const yearOptions = YEARS.slice(0, selectedCourse?.duration_years ?? 4);
+  const yearIndex = Math.max(1, yearOptions.indexOf(form.year) + 1);
 
   if (checking) {
     return (
@@ -150,25 +193,59 @@ function Onboarding() {
               />
             </Field>
 
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Course">
-                <input
-                  value={form.course}
-                  onChange={set("course")}
-                  placeholder="CS Eng"
-                  className={inputClass}
-                />
-              </Field>
-              <Field label="Year">
-                <select value={form.year} onChange={set("year")} className={inputClass}>
-                  {YEARS.map((y) => (
-                    <option key={y} value={y}>
-                      {y}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-            </div>
+            <Field label="Degree">
+              <select
+                value={form.degree}
+                onChange={(e) =>
+                  // Courses are degree-specific, so changing degree clears the
+                  // course rather than leaving a B.Tech course under B.Sc.
+                  setForm((f) => ({ ...f, degree: e.target.value, courseSlug: "" }))
+                }
+                className={inputClass}
+              >
+                <option value="">Select your degree…</option>
+                <option value="B.Tech">B.Tech</option>
+                <option value="B.Sc">B.Sc</option>
+              </select>
+            </Field>
+
+            <Field label="Course">
+              <select
+                value={form.courseSlug}
+                onChange={set("courseSlug")}
+                disabled={!form.degree}
+                className={`${inputClass} disabled:opacity-50`}
+              >
+                <option value="">
+                  {form.degree ? "Select your course…" : "Choose a degree first"}
+                </option>
+                {coursesForDegree.map((c) => (
+                  <option key={c.slug} value={c.slug}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+
+            <Field label="Year">
+              <select value={form.year} onChange={set("year")} className={inputClass}>
+                {yearOptions.map((y) => (
+                  <option key={y} value={y}>
+                    {y}
+                  </option>
+                ))}
+              </select>
+            </Field>
+
+            {selectedCourse && (
+              <p className="rounded-lg bg-secondary px-3 py-2.5 text-xs text-muted-foreground">
+                You'll see subjects from semesters{" "}
+                <span className="font-semibold text-foreground">
+                  {yearIndex * 2 - 1} and {yearIndex * 2}
+                </span>{" "}
+                of {selectedCourse.name}.
+              </p>
+            )}
 
             <button
               disabled={saving}
