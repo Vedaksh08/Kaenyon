@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Search, MapPin, BookOpen, UserCheck, UserX, Users } from "lucide-react";
 import { toast } from "sonner";
 import { BottomNav } from "@/components/bottom-nav";
-import { PathwaayMark } from "@/components/brand";
+import { AppHeader } from "@/components/brand";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchFriends, respondToRequest, removeFriend, type FriendRow } from "@/lib/social";
 
@@ -104,25 +104,23 @@ function Friends() {
 
   return (
     <div className="min-h-screen bg-background pb-24">
-      <header className="px-5 pt-8">
-        <div className="flex items-center gap-3">
-          <PathwaayMark className="h-10 w-10" />
-          <h1 className="text-2xl font-extrabold">Friends</h1>
-        </div>
-        <p className="mt-1 text-sm text-muted-foreground">
-          People you've connected with — see who's live in a classroom.
-        </p>
+      <AppHeader
+        accent="lime"
+        title="Friends"
+        subtitle="People you've connected with — see who's live in a classroom."
+      />
 
-        <div className="mt-5 relative">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+      <div className="px-5 pt-5">
+        <div className="relative">
+          <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Search friends..."
-            className="w-full rounded-lg border border-input bg-card py-2.5 pl-10 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            placeholder="Search friends…"
+            className="w-full rounded-xl border border-input bg-card py-2.5 pl-10 pr-3 text-sm shadow-card transition focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/25"
           />
         </div>
-      </header>
+      </div>
 
       {pending.length > 0 && (
         <section className="mt-6 px-5">

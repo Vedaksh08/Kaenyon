@@ -5,7 +5,7 @@ import { Camera, LogOut, Moon, Sun, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { usePlan } from "@/lib/plan-context";
 import { BottomNav } from "@/components/bottom-nav";
-import { PathwaayMark } from "@/components/brand";
+import { AppHeader } from "@/components/brand";
 
 export const Route = createFileRoute("/_authenticated/settings")({
   head: () => ({
@@ -190,12 +190,7 @@ function Settings() {
 
   return (
     <div className="min-h-screen bg-background pb-28">
-      <header className="border-b border-border bg-card">
-        <div className="mx-auto flex max-w-2xl items-center gap-2.5 px-5 py-4">
-          <PathwaayMark className="h-10 w-10" />
-          <h1 className="text-lg font-bold">Profile</h1>
-        </div>
-      </header>
+      <AppHeader accent="violet" title="Profile" subtitle="Your account and appearance" />
 
       <div className="mx-auto max-w-2xl px-5 py-6">
         {/* Avatar + identity */}

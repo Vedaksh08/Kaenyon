@@ -3,6 +3,7 @@ import { ArrowLeft } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { ensureOpenClassrooms } from "@/lib/classrooms.functions";
+import { PathwaayMark, PathwaayWordmark } from "@/components/brand";
 
 export const Route = createFileRoute("/_authenticated/subject/$subject")({
   head: ({ params }) => ({
@@ -132,42 +133,54 @@ function SubjectPage() {
 
   return (
     <div className="min-h-screen bg-background pb-12">
-      <div className="mx-auto max-w-6xl px-5 pt-6">
-        <div className="flex items-start justify-between gap-4">
-          <div>
+      {/* The subject screen carried no branding at all, which made it feel
+       * like a different product from the tab that links to it. */}
+      <header className="sticky top-0 z-30 border-b border-border bg-background/85 backdrop-blur-md">
+        <div className="mx-auto max-w-6xl px-5 pb-3 pt-[max(0.875rem,env(safe-area-inset-top))]">
+          <div className="flex items-center gap-2.5">
+            <PathwaayMark className="h-7 w-7" />
+            <PathwaayWordmark className="text-[13px]" />
             <Link
               to="/home"
-              className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+              className="ml-auto inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm font-medium text-muted-foreground transition hover:bg-secondary hover:text-foreground"
             >
               <ArrowLeft className="h-4 w-4" /> Back
             </Link>
-            <h1 className="mt-2 text-3xl font-extrabold">{name}</h1>
-            {/* Real presence, counted from user_presence — replaces a marquee
-             * of hardcoded names that implied an active userbase. */}
-            <p className="mt-1.5 flex items-center gap-2 text-sm text-muted-foreground">
-              {liveCount > 0 ? (
-                <>
-                  <span className="relative flex h-2 w-2">
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-75" />
-                    <span className="relative inline-flex h-2 w-2 rounded-full bg-success" />
-                  </span>
-                  {liveCount} {liveCount === 1 ? "student" : "students"} studying now
-                </>
-              ) : (
-                "Join a classroom to start solving doubts"
-              )}
-            </p>
           </div>
+          <h1 className="mt-2.5 text-[22px] font-extrabold leading-tight tracking-tight">{name}</h1>
+          {/* Real presence, counted from user_presence — replaces a marquee
+           * of hardcoded names that implied an active userbase. */}
+          <p className="mt-0.5 flex items-center gap-2 text-[13px] text-muted-foreground">
+            {liveCount > 0 ? (
+              <>
+                <span className="relative flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-75" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-success" />
+                </span>
+                <span className="font-medium text-success">
+                  {liveCount} {liveCount === 1 ? "student" : "students"} studying now
+                </span>
+              </>
+            ) : (
+              "Join a classroom to start solving doubts"
+            )}
+          </p>
         </div>
+        <span className="block h-[3px] w-full bg-brand-cyan" />
+      </header>
 
+      <div className="mx-auto max-w-6xl px-5 pt-6">
         {loading ? (
           <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {[0, 1, 2].map((i) => (
-              <div key={i} className="h-44 animate-pulse rounded-xl border border-border bg-card" />
+              <div
+                key={i}
+                className="h-48 animate-pulse rounded-2xl border border-border bg-card"
+              />
             ))}
           </div>
         ) : visible.length === 0 ? (
-          <div className="mt-8 rounded-xl border border-dashed border-border p-10 text-center">
+          <div className="mt-8 rounded-2xl border border-dashed border-border p-10 text-center">
             <p className="text-sm font-medium">No classrooms yet</p>
             <p className="mt-1 text-sm text-muted-foreground">
               Rooms for this subject haven't been set up.
@@ -186,7 +199,7 @@ function SubjectPage() {
               return (
                 <div
                   key={c.id}
-                  className="flex flex-col rounded-xl border border-border bg-card p-5 transition hover:border-primary/40 hover:shadow-md"
+                  className="flex flex-col rounded-2xl border border-border/70 bg-card p-5 shadow-card transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-elevated"
                 >
                   <div className="flex items-center gap-2">
                     <h3 className="font-bold">Room {i + 1}</h3>
@@ -220,7 +233,7 @@ function SubjectPage() {
                   {full ? (
                     <button
                       disabled
-                      className="mt-5 w-full cursor-not-allowed rounded-lg bg-secondary py-2.5 text-sm font-semibold text-muted-foreground"
+                      className="mt-5 w-full cursor-not-allowed rounded-xl bg-secondary py-2.5 text-sm font-semibold text-muted-foreground"
                     >
                       Room full
                     </button>
@@ -228,7 +241,7 @@ function SubjectPage() {
                     <Link
                       to="/room/$roomId"
                       params={{ roomId: c.id }}
-                      className="mt-5 block w-full rounded-lg bg-primary py-2.5 text-center text-sm font-semibold text-primary-foreground transition hover:bg-primary/90"
+                      className="mt-5 block w-full rounded-xl bg-primary py-2.5 text-center text-sm font-semibold text-primary-foreground shadow-brand transition hover:bg-brand-deep active:scale-[0.99]"
                     >
                       Join room
                     </Link>

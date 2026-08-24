@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Crown, Trophy } from "lucide-react";
 import { BottomNav } from "@/components/bottom-nav";
-import { PathwaayMark } from "@/components/brand";
+import { AppHeader } from "@/components/brand";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchLeaderboard, fetchMyStats, type LeaderRow, type MyStats } from "@/lib/social";
 
@@ -65,45 +65,42 @@ function Ranks() {
 
   return (
     <div className="min-h-screen bg-background pb-24">
-      <header className="bg-primary px-5 pb-6 pt-6 text-primary-foreground">
-        <div className="mb-4 flex items-center gap-2.5">
-          <PathwaayMark className="h-9 w-9" />
-          <span className="text-lg font-extrabold tracking-tight">Pathwaay</span>
-        </div>
-        <div className="text-[10px] font-bold uppercase tracking-widest opacity-80">
+      <AppHeader
+        accent="amber"
+        title="Global Rankings"
+        subtitle="Live — updates as doubts get answered and rated"
+      />
+
+      {/* The stats plate. Deep brand blue so your own standing reads as the
+       * headline of the page rather than another card in the list. */}
+      <div className="bg-primary px-5 pb-6 pt-5 text-primary-foreground">
+        <div className="text-[10px] font-bold uppercase tracking-widest opacity-75">
           Your position
         </div>
-        <div className="mt-1 flex items-center gap-2 text-3xl font-extrabold">
-          #{stats ? stats.rank.toLocaleString() : "—"} Globally
+        <div className="mt-1 text-3xl font-extrabold">
+          #{stats ? stats.rank.toLocaleString() : "—"}{" "}
+          <span className="text-xl font-bold opacity-80">Globally</span>
         </div>
-        <div className="mt-3 flex items-center gap-5 text-xs">
-          <div>
-            <div className="opacity-75">AVG RATING</div>
-            <div className="text-lg font-bold">
-              {stats && stats.ratings_count > 0
-                ? `${Number(stats.avg_rating).toFixed(1)} / 10`
-                : "—"}
-            </div>
-            <div className="opacity-60">
-              {stats?.ratings_count
+        <div className="mt-4 grid grid-cols-3 gap-2">
+          <Stat
+            label="Avg rating"
+            value={
+              stats && stats.ratings_count > 0 ? `${Number(stats.avg_rating).toFixed(1)} / 10` : "—"
+            }
+            note={
+              stats?.ratings_count
                 ? `${stats.ratings_count} rating${stats.ratings_count === 1 ? "" : "s"}`
-                : "not rated yet"}
-            </div>
-          </div>
-          <div>
-            {/* Confirmed by the asker, not "times I clicked Offer Help". */}
-            <div className="opacity-75">SOLVED</div>
-            <div className="text-lg font-bold">{stats?.solved ?? 0} Doubts</div>
-          </div>
-          <div>
-            <div className="opacity-75">ASKED</div>
-            <div className="text-lg font-bold">{stats?.doubts_asked ?? 0}</div>
-          </div>
+                : "not rated yet"
+            }
+          />
+          {/* Confirmed by the asker, not "times I clicked Offer Help". */}
+          <Stat label="Solved" value={String(stats?.solved ?? 0)} note="doubts" />
+          <Stat label="Asked" value={String(stats?.doubts_asked ?? 0)} note="doubts" />
         </div>
-      </header>
+      </div>
 
       <div className="px-5 pt-5">
-        <div className="mt-4 overflow-hidden rounded-2xl bg-card shadow-card">
+        <div className="overflow-hidden rounded-2xl border border-border/70 bg-card shadow-card">
           {loading && (
             <div className="px-4 py-6 text-sm text-muted-foreground">Loading leaderboard…</div>
           )}
@@ -112,27 +109,32 @@ function Ranks() {
               No rankings yet — help someone with a doubt and get rated to appear here.
             </div>
           )}
-          {rows.map((r, i) => (
-            <button
-              key={r.user_id}
-              onClick={() => nav({ to: "/u/$userId", params: { userId: r.user_id } })}
-              className="flex w-full items-center gap-3 border-b border-border px-4 py-3 text-left last:border-0 hover:bg-secondary/50"
-            >
-              <div className="w-8 text-center text-sm font-bold">
-                {i === 0 ? <Crown className="mx-auto h-5 w-5 text-warning" /> : i + 1}
-              </div>
-              <div className="flex-1">
-                <div className="font-bold text-primary">{r.name || "Student"}</div>
-                <div className="text-[11px] text-muted-foreground">{r.course || "—"}</div>
-              </div>
-              <div className="text-right text-xs">
-                <div className="font-semibold">{r.solved} solved</div>
-                <div className="text-muted-foreground">
-                  {r.ratings_count > 0 ? `${Number(r.avg_rating).toFixed(1)} / 10` : "unrated"}
+          {rows.map((r, i) => {
+            const medal = ["text-brand-amber", "text-muted-foreground", "text-brand-violet"][i];
+            return (
+              <button
+                key={r.user_id}
+                onClick={() => nav({ to: "/u/$userId", params: { userId: r.user_id } })}
+                className="flex w-full items-center gap-3 border-b border-border px-4 py-3 text-left transition-colors last:border-0 hover:bg-secondary"
+              >
+                <div className="w-8 shrink-0 text-center text-sm font-bold text-muted-foreground">
+                  {i < 3 ? <Crown className={`mx-auto h-5 w-5 ${medal}`} /> : i + 1}
                 </div>
-              </div>
-            </button>
-          ))}
+                <div className="min-w-0 flex-1">
+                  <div className="truncate font-bold text-foreground">{r.name || "Student"}</div>
+                  <div className="truncate text-[11px] text-muted-foreground">
+                    {r.course || "—"}
+                  </div>
+                </div>
+                <div className="shrink-0 text-right text-xs">
+                  <div className="font-bold text-foreground">{r.solved} solved</div>
+                  <div className="text-muted-foreground">
+                    {r.ratings_count > 0 ? `${Number(r.avg_rating).toFixed(1)} / 10` : "unrated"}
+                  </div>
+                </div>
+              </button>
+            );
+          })}
         </div>
 
         <div className="mt-5 flex items-center justify-center gap-2 text-xs text-muted-foreground">
@@ -142,6 +144,17 @@ function Ranks() {
       </div>
 
       <BottomNav />
+    </div>
+  );
+}
+
+/** One figure on the rankings plate. */
+function Stat({ label, value, note }: { label: string; value: string; note?: string }) {
+  return (
+    <div className="rounded-xl bg-white/10 px-3 py-2.5">
+      <div className="text-[10px] font-bold uppercase tracking-wider opacity-75">{label}</div>
+      <div className="mt-0.5 truncate text-lg font-extrabold leading-tight">{value}</div>
+      {note && <div className="truncate text-[10px] opacity-60">{note}</div>}
     </div>
   );
 }

@@ -15,6 +15,9 @@
   --radius-2xl: 20px;
 
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  /* The wordmark face from the brand sheet: wide geometric caps with a
+   * pointed-apex A. Display only — never body copy. */
+  --font-display: "Jura", "Century Gothic", ui-sans-serif, system-ui, sans-serif;
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -50,25 +53,38 @@
   --color-room: var(--room);
   --color-room-card: var(--room-card);
 
-  --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.08);
-  --shadow-elevated: 0 8px 24px rgba(30, 58, 138, 0.18);
+  /* The four bars of the mark, usable as utilities (bg-brand-cyan, etc.) so
+   * accents across the app come from the logo rather than ad-hoc Tailwind
+   * colours. */
+  --color-brand-cyan: var(--brand-cyan);
+  --color-brand-lime: var(--brand-lime);
+  --color-brand-amber: var(--brand-amber);
+  --color-brand-violet: var(--brand-violet);
+  --color-brand-deep: var(--brand-deep);
+
+  --shadow-card: 0 1px 2px rgba(16, 40, 120, 0.05), 0 4px 12px rgba(16, 40, 120, 0.07);
+  --shadow-elevated: 0 8px 28px rgba(16, 40, 120, 0.16);
+  --shadow-brand: 0 6px 20px -4px rgba(19, 64, 196, 0.4);
 }
 
 :root {
   --radius: 12px;
 
-  /* StudyAll palette (light) */
-  --background: oklch(0.974 0.008 247); /* #F0F4F8 */
-  --foreground: oklch(0.21 0.05 264);
+  /* Pathwaay palette (light). Every hue here traces back to the brand sheet:
+   * a deep royal-blue plate, four accent bars, and neutrals tinted toward the
+   * same blue so greys never read as dirty next to it. */
+  --background: oklch(0.976 0.006 255); /* faint blue-tinted paper */
+  --foreground: oklch(0.24 0.045 264);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.21 0.05 264);
+  --card-foreground: oklch(0.24 0.045 264);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.21 0.05 264);
+  --popover-foreground: oklch(0.24 0.045 264);
 
   --navy: oklch(0.34 0.14 264); /* #1E3A8A */
-  /* Pathwaay palette, from the brand sheet. The bars in the mark are
-   * --brand-cyan / lime / amber / violet; the deep blue is the plate. */
+  /* The bars in the mark are --brand-cyan / lime / amber / violet; --brand is
+   * the plate blue the whole sheet sits on. */
   --brand: oklch(0.45 0.21 264); /* #1340C4 — the logo plate blue */
+  --brand-deep: oklch(0.36 0.18 264); /* pressed / gradient end */
   --brand-cyan: oklch(0.74 0.16 226); /* #00C4FF */
   --brand-lime: oklch(0.87 0.21 140); /* #7DFF5A */
   --brand-amber: oklch(0.82 0.17 82); /* #FFC62E */
@@ -78,12 +94,12 @@
   --primary: var(--brand);
   --primary-foreground: oklch(1 0 0);
 
-  --secondary: oklch(0.96 0.01 247);
-  --secondary-foreground: oklch(0.21 0.05 264);
-  --muted: oklch(0.95 0.01 247);
-  --muted-foreground: oklch(0.5 0.02 257); /* #6B7280-ish */
-  --accent: oklch(0.96 0.01 247);
-  --accent-foreground: oklch(0.21 0.05 264);
+  --secondary: oklch(0.955 0.012 255);
+  --secondary-foreground: oklch(0.24 0.045 264);
+  --muted: oklch(0.955 0.012 255);
+  --muted-foreground: oklch(0.52 0.028 259);
+  --accent: oklch(0.955 0.012 255);
+  --accent-foreground: oklch(0.24 0.045 264);
 
   --pro: oklch(0.55 0.24 295); /* #7C3AED */
   --pro-foreground: oklch(1 0 0);
@@ -96,11 +112,13 @@
   --destructive: var(--danger);
   --destructive-foreground: oklch(1 0 0);
 
-  --room: oklch(0.16 0.02 264); /* #0D1117 */
-  --room-card: oklch(0.22 0.02 264);
+  /* The classroom shell. Tinted toward the brand blue rather than neutral
+   * black — video tiles and the blue chrome sit on it without clashing. */
+  --room: oklch(0.175 0.028 265);
+  --room-card: oklch(0.235 0.03 265);
 
-  --border: oklch(0.9 0.01 255);
-  --input: oklch(0.9 0.01 255);
+  --border: oklch(0.905 0.014 255);
+  --input: oklch(0.905 0.014 255);
   --ring: var(--brand);
 
   --sidebar: oklch(0.16 0.02 264);
@@ -115,13 +133,31 @@
 
 .dark {
   --background: var(--room);
-  --foreground: oklch(0.98 0 0);
+  --foreground: oklch(0.98 0.004 260);
   --card: var(--room-card);
-  --card-foreground: oklch(0.98 0 0);
+  --card-foreground: oklch(0.98 0.004 260);
   --popover: var(--room-card);
-  --popover-foreground: oklch(0.98 0 0);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
+  --popover-foreground: oklch(0.98 0.004 260);
+
+  /* The plate blue is too dark to read on a dark surface — lift it so
+   * primary buttons and links keep their contrast. */
+  --brand: oklch(0.62 0.19 264);
+  --brand-deep: oklch(0.52 0.2 264);
+  --primary: var(--brand);
+  --ring: var(--brand);
+
+  --secondary: oklch(0.27 0.028 265);
+  --secondary-foreground: oklch(0.98 0.004 260);
+  --muted: oklch(0.27 0.028 265);
+  --muted-foreground: oklch(0.72 0.02 262);
+  --accent: oklch(0.3 0.03 265);
+  --accent-foreground: oklch(0.98 0.004 260);
+
+  --border: oklch(1 0 0 / 12%);
+  --input: oklch(1 0 0 / 16%);
+
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 14px rgba(0, 0, 0, 0.35);
+  --shadow-elevated: 0 10px 30px rgba(0, 0, 0, 0.5);
 }
 
 body {
@@ -133,4 +169,34 @@ body {
 
 @utility shadow-card {
   box-shadow: var(--shadow-card);
+}
+
+@utility shadow-brand {
+  box-shadow: var(--shadow-brand);
+}
+
+/**
+ * The Pathwaay wordmark. The brand sheet sets it in wide geometric caps, so
+ * the letter-spacing and uppercase are part of the mark itself, not styling
+ * choices left to each call site.
+ */
+@utility wordmark {
+  font-family: var(--font-display);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  /* Tracking adds space after the final letter too, which visually pushes the
+   * word left of centre. Pulling it back re-centres the block. */
+  text-indent: 0.22em;
+}
+
+/* The mark's four bars, left to right — for gradient rules and accent strips. */
+@utility brand-rainbow {
+  background-image: linear-gradient(
+    90deg,
+    var(--brand-cyan) 0%,
+    var(--brand-lime) 33%,
+    var(--brand-amber) 66%,
+    var(--brand-violet) 100%
+  );
 }

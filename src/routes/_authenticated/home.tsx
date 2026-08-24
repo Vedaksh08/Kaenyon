@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { usePlan } from "@/lib/plan-context";
 import { BottomNav } from "@/components/bottom-nav";
-import { PathwaayMark } from "@/components/brand";
+import { AppHeader } from "@/components/brand";
 import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/_authenticated/home")({
@@ -50,41 +50,45 @@ interface SubjectRow {
 // courses a per-slug map is unmaintainable, and the old one listed the seven
 // placeholder subjects that no longer exist.
 const ICON_RULES: Array<{ match: RegExp; icon: LucideIcon; className: string }> = [
-  { match: /security|cyber|crypt/i, icon: ShieldCheck, className: "bg-rose-500 text-white" },
-  { match: /web|full.?stack|frontend/i, icon: Code2, className: "bg-orange-500 text-white" },
+  { match: /security|cyber|crypt/i, icon: ShieldCheck, className: "bg-brand-violet text-white" },
+  { match: /web|full.?stack|frontend/i, icon: Code2, className: "bg-brand-amber text-navy" },
   {
     match: /data structure|algorithm|discrete/i,
     icon: Binary,
-    className: "bg-teal-500 text-white",
+    className: "bg-brand-cyan text-navy",
   },
   {
     match: /artificial intelligence|machine learning|neural|\bai\b/i,
     icon: Bot,
-    className: "bg-violet-500 text-white",
+    className: "bg-brand-violet text-white",
   },
   {
     match: /operating system|linux|unix|network/i,
     icon: Terminal,
-    className: "bg-zinc-800 text-white",
+    className: "bg-navy text-white",
   },
   {
     match: /programming|software|compiler|python|java|\bc\+\+/i,
     icon: Laptop,
-    className: "bg-slate-900 text-white",
+    className: "bg-primary text-primary-foreground",
   },
-  { match: /database|dbms|\bsql\b/i, icon: Layers, className: "bg-emerald-500 text-white" },
-  { match: /math|calculus|algebra|statistic/i, icon: Sigma, className: "bg-indigo-500 text-white" },
-  { match: /physic|mechanic|thermo|fluid/i, icon: Atom, className: "bg-sky-500 text-white" },
-  { match: /chemi|material|metallurg/i, icon: FlaskConical, className: "bg-amber-500 text-white" },
+  { match: /database|dbms|\bsql\b/i, icon: Layers, className: "bg-brand-lime text-navy" },
+  { match: /math|calculus|algebra|statistic/i, icon: Sigma, className: "bg-primary text-white" },
+  { match: /physic|mechanic|thermo|fluid/i, icon: Atom, className: "bg-brand-cyan text-navy" },
+  {
+    match: /chemi|material|metallurg/i,
+    icon: FlaskConical,
+    className: "bg-brand-amber text-navy",
+  },
   {
     match: /electr|circuit|signal|electronic/i,
     icon: Cpu,
-    className: "bg-yellow-500 text-white",
+    className: "bg-brand-lime text-navy",
   },
   {
     match: /civil|structur|survey|construct/i,
     icon: Building2,
-    className: "bg-stone-600 text-white",
+    className: "bg-navy text-white",
   },
 ];
 
@@ -184,37 +188,36 @@ function Home() {
 
   return (
     <div className="min-h-screen bg-background pb-24">
-      <header className="px-5 pt-8">
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            <h1 className="truncate text-2xl font-extrabold text-primary">Hey, {firstName}! 👋</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {totalLive > 0 ? (
-                <span className="inline-flex items-center gap-1.5">
-                  <span className="relative flex h-2 w-2">
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-75" />
-                    <span className="relative inline-flex h-2 w-2 rounded-full bg-success" />
-                  </span>
-                  {totalLive} studying right now
-                </span>
-              ) : (
-                `${courseLabel} · ${profile?.year ?? ""}`.trim()
-              )}
-            </p>
-          </div>
-          <PathwaayMark className="h-14 w-14 shrink-0" />
-        </div>
-      </header>
+      <AppHeader
+        accent="cyan"
+        title={`Hey, ${firstName}! 👋`}
+        subtitle={
+          totalLive > 0 ? (
+            <span className="inline-flex items-center gap-1.5 font-medium text-success">
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-75" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-success" />
+              </span>
+              {totalLive} studying right now
+            </span>
+          ) : (
+            `${courseLabel} · ${profile?.year ?? ""}`.trim()
+          )
+        }
+      />
 
       {loading ? (
-        <div className="mt-8 flex gap-3 px-5">
-          {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="h-[132px] w-32 shrink-0 animate-pulse rounded-xl bg-card" />
+        /* Same shape as the real cards, so the page does not jump when they
+         * arrive — the old skeleton was a horizontal strip and the grid is
+         * two columns. */
+        <div className="mt-6 grid grid-cols-2 gap-3 px-5">
+          {[0, 1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="h-[74px] animate-pulse rounded-2xl bg-card shadow-card" />
           ))}
         </div>
       ) : subjects.length === 0 ? (
         <div className="mt-10 px-5">
-          <div className="rounded-xl border border-dashed border-border p-10 text-center">
+          <div className="rounded-2xl border border-dashed border-border p-10 text-center">
             <BookOpen className="mx-auto h-8 w-8 text-muted-foreground" />
             <p className="mt-3 text-sm font-medium">No subjects for your year yet</p>
             <p className="mt-1 text-sm text-muted-foreground">
@@ -223,10 +226,14 @@ function Home() {
           </div>
         </div>
       ) : (
-        <section className="mt-8 px-5">
-          <h2 className="flex items-center gap-1.5 text-sm font-bold text-foreground">
-            <Sparkles className="h-4 w-4 text-primary" /> Your subjects
-          </h2>
+        <section className="mt-6 px-5">
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-primary" />
+            <h2 className="text-sm font-bold text-foreground">Your subjects</h2>
+            <span className="rounded-full bg-secondary px-2 py-0.5 text-[11px] font-bold text-muted-foreground">
+              {subjects.length}
+            </span>
+          </div>
           <div className="mt-3 grid grid-cols-2 gap-3">
             {subjects.map((s) => {
               const { icon: Icon, className } = iconFor(s.name);
@@ -235,10 +242,10 @@ function Home() {
                   key={s.slug}
                   to="/subject/$subject"
                   params={{ subject: s.slug }}
-                  className="relative flex items-center gap-3 rounded-xl bg-card p-4 shadow-card hover:shadow-elevated"
+                  className="group relative flex items-center gap-3 rounded-2xl border border-border/70 bg-card p-4 shadow-card transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-elevated active:translate-y-0"
                 >
                   <div
-                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${className}`}
+                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-transform duration-200 group-hover:scale-105 ${className}`}
                   >
                     <Icon className="h-5 w-5" />
                   </div>
@@ -260,8 +267,8 @@ function Home() {
  * text under every card. */
 function LiveDot({ count }: { count: number }) {
   return (
-    <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-success/10 px-1.5 py-0.5 text-[10px] font-bold text-success">
-      <span className="h-1.5 w-1.5 rounded-full bg-success" />
+    <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-success px-1.5 py-0.5 text-[10px] font-bold text-white shadow-sm">
+      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
       {count}
     </span>
   );

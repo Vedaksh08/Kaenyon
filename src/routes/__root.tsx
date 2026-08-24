@@ -89,13 +89,16 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { property: "og:description", content: "Peer-to-peer doubt solving for college students." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
+      // Colours the mobile browser chrome to match the app instead of the
+      // default white bar above a blue header.
+      { name: "theme-color", content: "#1340C4" },
     ],
     links: [
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
       {
         rel: "stylesheet",
-        href: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap",
+        href: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Jura:wght@400;500;600;700&display=swap",
       },
       { rel: "stylesheet", href: appCss },
       // Tab icon. The light mark reads better at 16px against either theme.

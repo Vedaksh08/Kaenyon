@@ -30,7 +30,7 @@ import { useWebrtcMesh } from "@/lib/use-webrtc-mesh";
 import { cn } from "@/lib/utils";
 import { useCaptureGuard } from "@/lib/use-capture-guard";
 import { Whiteboard } from "@/components/whiteboard";
-import { PathwaayMark } from "@/components/brand";
+import { PathwaayMark, PathwaayWordmark } from "@/components/brand";
 
 /**
  * `audible` is off by default: the main classroom is silent by design, so
@@ -1491,43 +1491,56 @@ function Room() {
   return (
     <div className="min-h-screen bg-room text-white">
       {/* Top bar */}
-      <header className="flex flex-wrap items-center gap-3 border-b border-white/10 px-5 py-3">
-        <button
-          onClick={() => nav({ to: "/home" })}
-          className="-ml-1 rounded-lg p-1.5 text-white/70 transition hover:bg-white/10 hover:text-white"
-          aria-label="Leave classroom"
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </button>
-        {/* The classroom had no branding at all — the one screen students spend
-         * the most time on. */}
-        <PathwaayMark className="h-10 w-10" />
-        <div className="min-w-0">
-          <div className="truncate text-sm font-semibold">{roomTitle}</div>
-          <div className="flex items-center gap-1.5 text-xs text-white/50">
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-danger" />
-            Live · {remoteParticipants.length + 1}{" "}
-            {remoteParticipants.length === 0 ? "person" : "people"}
+      {/* The classroom had no branding at all — the one screen students spend
+       * the most time on. */}
+      <header className="sticky top-0 z-40 border-b border-white/10 bg-room/95 backdrop-blur-md">
+        <div className="flex flex-wrap items-center gap-3 px-4 py-2.5 sm:px-5">
+          <button
+            onClick={() => nav({ to: "/home" })}
+            className="-ml-1 rounded-lg p-1.5 text-white/70 transition hover:bg-white/10 hover:text-white"
+            aria-label="Leave classroom"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+          <PathwaayMark className="h-8 w-8" />
+          <div className="hidden min-w-0 sm:block">
+            <PathwaayWordmark tone="onDark" className="text-[11px]" />
+          </div>
+          <span aria-hidden className="hidden h-5 w-px bg-white/15 sm:block" />
+          <div className="min-w-0">
+            <div className="truncate text-sm font-semibold leading-tight">{roomTitle}</div>
+            <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-white/50">
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-danger opacity-75" />
+                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-danger" />
+              </span>
+              Live · {remoteParticipants.length + 1}{" "}
+              {remoteParticipants.length === 0 ? "person" : "people"}
+            </div>
+          </div>
+          <div className="ml-auto">
+            <button
+              onClick={() => setInviteOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-2 text-xs font-semibold transition hover:bg-white/20 active:scale-[0.98]"
+            >
+              <UserPlus className="h-4 w-4" />
+              <span className="hidden sm:inline">Invite to private</span>
+              <span className="sm:hidden">Invite</span>
+            </button>
           </div>
         </div>
-        <div className="ml-auto">
-          <button
-            onClick={() => setInviteOpen(true)}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-2 text-xs font-semibold transition hover:bg-white/20"
-          >
-            <UserPlus className="h-4 w-4" /> Invite to private
-          </button>
-        </div>
+        {/* The mark's bars, tying the classroom back to the brand. */}
+        <span aria-hidden className="brand-rainbow block h-[2px] w-full opacity-70" />
       </header>
 
-      <div className="flex flex-col md:h-[calc(100vh-69px)] md:flex-row">
+      <div className="flex flex-col md:h-[calc(100dvh-64px)] md:flex-row">
         {/* Grid */}
         <main className={`flex-1 p-5 ${chatOpen ? "" : ""}`}>
           {remoteParticipants.length === 0 && (
-            <div className="mb-4 rounded-lg border border-white/10 bg-room-card p-4 text-center">
-              <p className="text-sm font-semibold text-white/80">No participant live</p>
-              <p className="mt-1 text-xs text-white/50">
-                You're the only one in this classroom right now.
+            <div className="mb-4 rounded-xl border border-dashed border-white/15 bg-room-card/60 p-5 text-center">
+              <p className="text-sm font-semibold text-white/80">You're first in</p>
+              <p className="mt-1 text-xs leading-relaxed text-white/50">
+                Post your doubt below — classmates joining this room will see it straight away.
               </p>
             </div>
           )}
@@ -1535,8 +1548,8 @@ function Room() {
             {visibleParticipants.map((p) => (
               <div
                 key={p.id}
-                className={`relative rounded-xl border bg-room-card p-3 transition ${
-                  p.you ? "border-primary/60" : "border-white/10"
+                className={`relative rounded-2xl border bg-room-card p-3 transition-colors ${
+                  p.you ? "border-brand-cyan/70 ring-1 ring-brand-cyan/25" : "border-white/10"
                 }`}
               >
                 <button
@@ -1628,6 +1641,11 @@ function Room() {
                 </div>
                 <div className="mt-2.5 flex items-center gap-1.5">
                   <span className="min-w-0 flex-1 truncate text-sm font-semibold">{p.name}</span>
+                  {p.you && (
+                    <span className="shrink-0 rounded bg-brand-cyan/20 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-brand-cyan">
+                      You
+                    </span>
+                  )}
                   {/* Mic was never shown here at all, so a muted classmate
                    * looked identical to a talking one. */}
                   {(p.you ? mic : p.mic) ? (
@@ -1649,7 +1667,7 @@ function Room() {
           </div>
 
           {/* Bottom controls */}
-          <div className="fixed bottom-6 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-full bg-room-card/95 px-3 py-2 shadow-elevated backdrop-blur">
+          <div className="fixed bottom-[max(1.25rem,env(safe-area-inset-bottom))] left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/10 bg-room-card/95 px-3 py-2 shadow-elevated backdrop-blur-md">
             <CtlBtn
               title="Mic off — the classroom is silent. Join a private session to talk."
               onClick={() =>
@@ -1703,7 +1721,7 @@ function Room() {
 
             <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto px-4 py-4">
               {visibleDoubts.length === 0 && (
-                <div className="rounded-lg border border-dashed border-white/15 px-4 py-8 text-center">
+                <div className="rounded-xl border border-dashed border-white/15 px-4 py-9 text-center">
                   <MessageSquare className="mx-auto h-6 w-6 text-white/30" />
                   <p className="mt-2.5 text-xs font-medium text-white/70">No doubts yet</p>
                   <p className="mt-1 text-[11px] leading-relaxed text-white/40">
@@ -1712,7 +1730,10 @@ function Room() {
                 </div>
               )}
               {visibleDoubts.map((d) => (
-                <div key={d.id} className="relative rounded-lg border border-white/10 bg-room p-3">
+                <div
+                  key={d.id}
+                  className="relative rounded-xl border border-white/10 bg-room p-3 transition-colors hover:border-white/20"
+                >
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -1750,13 +1771,13 @@ function Room() {
                   <div className="flex items-center gap-2 text-xs">
                     <span className="font-semibold">{d.user}</span>
                     {d.status === "offer" && (
-                      <span className="rounded bg-success/20 px-1.5 py-0.5 text-[10px] font-bold text-success">
-                        OFFER RECEIVED
+                      <span className="rounded-full bg-success/20 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-success">
+                        Offer received
                       </span>
                     )}
                     {d.status === "solving" && (
-                      <span className="rounded bg-warning/20 px-1.5 py-0.5 text-[10px] font-bold text-warning">
-                        SOLVING
+                      <span className="rounded-full bg-warning/20 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-warning">
+                        Solving
                       </span>
                     )}
                   </div>
@@ -1765,7 +1786,7 @@ function Room() {
                     <button
                       onClick={() => void offerHelp(d)}
                       disabled={d.author_id === userId}
-                      className="rounded bg-white/10 px-2 py-1 text-[11px] font-semibold hover:bg-white/20 disabled:opacity-40"
+                      className="rounded-lg bg-white/10 px-2.5 py-1 text-[11px] font-semibold transition hover:bg-white/20 active:scale-95 disabled:opacity-40"
                     >
                       Offer Help
                     </button>
@@ -1776,7 +1797,7 @@ function Room() {
                           setInvitingForOwnDoubt(true);
                           setInviteOpen(true);
                         }}
-                        className="rounded bg-primary px-2 py-1 text-[11px] font-semibold text-primary-foreground hover:bg-primary/90"
+                        className="rounded-lg bg-primary px-2.5 py-1 text-[11px] font-semibold text-primary-foreground transition hover:bg-primary/90 active:scale-95"
                       >
                         Start Private
                       </button>
@@ -1787,7 +1808,7 @@ function Room() {
                             "Only the student who posted this doubt can start a private session.",
                           )
                         }
-                        className="cursor-not-allowed rounded bg-white/5 px-2 py-1 text-[11px] font-semibold text-white/40"
+                        className="cursor-not-allowed rounded-lg bg-white/5 px-2.5 py-1 text-[11px] font-semibold text-white/40"
                         title="Only the doubt asker can start a private session"
                       >
                         Start Private
@@ -1805,13 +1826,13 @@ function Room() {
                   onChange={(e) => setDraft(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && ask()}
                   placeholder="Ask a question…"
-                  className="min-w-0 flex-1 rounded-lg border border-white/10 bg-room px-3.5 py-2.5 text-sm placeholder:text-white/40 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  className="min-w-0 flex-1 rounded-xl border border-white/10 bg-room px-3.5 py-2.5 text-sm transition placeholder:text-white/40 focus:border-brand-cyan focus:outline-none focus:ring-2 focus:ring-brand-cyan/30"
                 />
                 <button
                   onClick={ask}
                   disabled={!draft.trim()}
                   aria-label="Post doubt"
-                  className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-lg bg-primary transition hover:bg-primary/90 disabled:opacity-40"
+                  className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground transition hover:bg-primary/90 active:scale-95 disabled:opacity-40"
                 >
                   <Send className="h-4 w-4" />
                 </button>
@@ -2037,8 +2058,8 @@ function CtlBtn({
         // the class list, and Tailwind resolves that by stylesheet order, not
         // by which came last in the string — so the red never applied.
         className={cn(
-          "flex h-11 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20 disabled:cursor-not-allowed",
-          wide ? "gap-2 px-5" : "w-11",
+          "flex h-12 items-center justify-center rounded-full bg-white/10 text-white transition-all hover:bg-white/20 active:scale-95 disabled:cursor-not-allowed",
+          wide ? "gap-2 px-5" : "w-12",
           className,
         )}
       >
@@ -2047,7 +2068,7 @@ function CtlBtn({
       {title && (
         <span
           role="tooltip"
-          className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 hidden max-w-[220px] -translate-x-1/2 whitespace-nowrap rounded-md bg-slate-900 px-2.5 py-1.5 text-xs font-medium text-white shadow-elevated ring-1 ring-white/10 group-hover:block"
+          className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 hidden w-max max-w-[220px] -translate-x-1/2 text-balance rounded-lg bg-slate-900 px-2.5 py-1.5 text-center text-xs font-medium leading-snug text-white shadow-elevated ring-1 ring-white/10 group-hover:block"
         >
           {title}
         </span>
@@ -2441,20 +2462,21 @@ function PrivateSession({
 
   return (
     <div className="min-h-screen bg-room text-white">
-      <header className="flex flex-wrap items-center gap-3 border-b border-white/10 px-5 py-3">
-        <span className="inline-flex items-center gap-2 rounded-full bg-primary px-3 py-1 text-xs font-bold">
-          <span className="h-2 w-2 animate-pulse rounded-full bg-white" /> PRIVATE SESSION (A/V)
+      <header className="sticky top-0 z-40 flex flex-wrap items-center gap-2.5 border-b border-white/10 bg-room/95 px-4 py-2.5 backdrop-blur-md sm:px-5">
+        <PathwaayMark className="h-7 w-7" />
+        <span className="inline-flex items-center gap-2 rounded-full bg-primary px-3 py-1 text-[11px] font-bold uppercase tracking-wide">
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" /> Private session
         </span>
         <span className="text-xs text-white/60">{totalSeats}/7 in room</span>
         {isModerator && (
-          <span className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] font-bold text-white/70">
-            MODERATOR
+          <span className="rounded-full bg-brand-amber/20 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-brand-amber">
+            Moderator
           </span>
         )}
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex flex-wrap items-center gap-2">
           <button
             onClick={() => setPanel(panel === "board" ? "none" : "board")}
-            className={`inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold ${
+            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition active:scale-95 ${
               panel === "board"
                 ? "bg-primary text-primary-foreground"
                 : "bg-white/10 hover:bg-white/20"
@@ -2464,7 +2486,7 @@ function PrivateSession({
           </button>
           <button
             onClick={() => void toggleShare()}
-            className={`inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold ${
+            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition active:scale-95 ${
               sharing ? "bg-primary text-primary-foreground" : "bg-white/10 hover:bg-white/20"
             }`}
           >
@@ -2473,7 +2495,7 @@ function PrivateSession({
           {isModerator && (
             <button
               onClick={muteAll}
-              className="inline-flex items-center gap-1 rounded-lg bg-white/10 px-3 py-1.5 text-xs font-semibold hover:bg-white/20"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-xs font-semibold transition hover:bg-white/20 active:scale-95"
             >
               <VolumeX className="h-4 w-4" /> Mute All
             </button>
@@ -2481,14 +2503,14 @@ function PrivateSession({
           <button
             onClick={() => setInviteOpen(true)}
             disabled={remainingSlots === 0}
-            className="inline-flex items-center gap-1 rounded-lg bg-white/10 px-3 py-1.5 text-xs font-semibold hover:bg-white/20 disabled:opacity-40"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-xs font-semibold transition hover:bg-white/20 active:scale-95 disabled:opacity-40"
           >
             <UserPlus className="h-4 w-4" /> Invite{" "}
             {remainingSlots > 0 ? `(+${remainingSlots})` : "(full)"}
           </button>
           <button
             onClick={() => onReturn(all)}
-            className="inline-flex items-center gap-1 rounded-lg bg-warning px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-warning px-3 py-1.5 text-xs font-semibold text-navy transition hover:opacity-90 active:scale-95"
           >
             <ArrowLeft className="h-4 w-4" /> Return to Main
           </button>
@@ -2526,7 +2548,7 @@ function PrivateSession({
                 </div>
               )}
             </div>
-            <div className="flex items-center gap-2 border-t border-white/10 px-4 py-2 text-xs text-white/60">
+            <div className="flex items-center gap-2 border-t border-white/10 bg-room-card/60 px-4 py-2 text-xs font-medium text-white/70">
               <MonitorUp className="h-3.5 w-3.5" />
               {sharing ? "You are presenting" : `${stagePeer?.name ?? "Someone"} is presenting`}
             </div>
@@ -2540,7 +2562,7 @@ function PrivateSession({
               : "sm:grid-cols-2 lg:grid-cols-3"
           }`}
         >
-          <div className="rounded-2xl border border-primary bg-room-card p-4 text-center">
+          <div className="rounded-2xl border border-brand-cyan/70 bg-room-card p-4 text-center ring-1 ring-brand-cyan/25">
             <div className="flex h-40 items-center justify-center overflow-hidden rounded-xl bg-black/40">
               {sharing ? (
                 <div className="flex flex-col items-center gap-2 text-white/60">
@@ -2556,7 +2578,7 @@ function PrivateSession({
                   className="h-full w-full scale-x-[-1] object-cover"
                 />
               ) : (
-                <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary text-2xl font-bold">
+                <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary text-2xl font-bold text-primary-foreground">
                   {youName.charAt(0).toUpperCase()}
                 </div>
               )}
@@ -2564,7 +2586,9 @@ function PrivateSession({
             <div className="mt-3 flex items-center justify-center gap-2 text-sm font-semibold">
               <span className="truncate">{youName}</span>
               {isModerator && (
-                <span className="rounded bg-primary px-1.5 py-0.5 text-[10px] font-bold">MOD</span>
+                <span className="rounded-full bg-brand-amber/20 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-brand-amber">
+                  Mod
+                </span>
               )}
               {mic ? (
                 <Mic className="h-3 w-3 text-success" />
@@ -2579,7 +2603,7 @@ function PrivateSession({
             return (
               <div
                 key={p.id}
-                className="group relative rounded-2xl border border-white/10 bg-room-card p-4 text-center"
+                className="group relative rounded-2xl border border-white/10 bg-room-card p-4 text-center transition-colors hover:border-white/20"
               >
                 <div className="flex h-40 items-center justify-center overflow-hidden rounded-xl bg-black/40">
                   {privateStreams[p.id] ? (
@@ -2621,7 +2645,7 @@ function PrivateSession({
       </main>
 
       {/* Bottom controls */}
-      <div className="fixed bottom-6 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-full bg-room-card/95 px-3 py-2 shadow-elevated backdrop-blur">
+      <div className="fixed bottom-[max(1.25rem,env(safe-area-inset-bottom))] left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/10 bg-room-card/95 px-3 py-2 shadow-elevated backdrop-blur-md">
         <CtlBtn
           title={
             mutedByMod
