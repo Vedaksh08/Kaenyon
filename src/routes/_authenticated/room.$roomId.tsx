@@ -895,7 +895,7 @@ function Room() {
     (async () => {
       const { data } = await supabase
         .from("classrooms")
-        .select("room_number, subjects(name)")
+        .select("room_number, capacity, subjects(name)")
         .eq("id", roomId)
         .maybeSingle();
       if (cancelled || !data) return;
@@ -903,6 +903,19 @@ function Room() {
       setRoomTitle(
         subjectName ? `${subjectName} · Room ${data.room_number}` : `Room ${data.room_number}`,
       );
+
+      // Nothing stopped a full room being joined from a shared link, and one
+      // person over the limit degrades video for everyone already inside.
+      const { data: live } = await supabase.rpc("get_room_presence", {
+        _classroom_id: roomId,
+      });
+      if (cancelled) return;
+      const { data: me } = await supabase.auth.getUser();
+      const already = (live ?? []).some((r) => r.user_id === me.user?.id);
+      if (!already && (live?.length ?? 0) >= data.capacity) {
+        toast.error("That room is full — try another one.");
+        nav({ to: "/home", replace: true });
+      }
     })();
     return () => {
       cancelled = true;

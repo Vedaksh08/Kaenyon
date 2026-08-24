@@ -6,7 +6,12 @@ import { z } from "zod";
  * subject at all times. When rooms fill up, new ones are created automatically.
  */
 const OPEN_TARGET = 3;
-const DEFAULT_CAPACITY = 30;
+// Peer-to-peer video is a full mesh: everyone connects directly to everyone
+// else, so cost grows quadratically. At 20 people each browser holds 19
+// connections and uploads ~4.8 Mbps, which home wifi cannot sustain — rooms
+// degraded into "some see some, nobody sees everyone". Six is what a mesh
+// actually carries. Raise this when the SFU migration lands.
+const DEFAULT_CAPACITY = 6;
 const PRESENCE_WINDOW_MS = 2 * 60 * 1000;
 
 export const ensureOpenClassrooms = createServerFn({ method: "POST" })
