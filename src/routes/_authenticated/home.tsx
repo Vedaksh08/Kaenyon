@@ -98,12 +98,29 @@ function iconFor(name: string) {
   return ICON_RULES.find((r) => r.match.test(name)) ?? FALLBACK;
 }
 
+function getIndianGreeting() {
+  const hour = Number(
+    new Intl.DateTimeFormat("en-IN", {
+      timeZone: "Asia/Kolkata",
+      hour: "2-digit",
+      hourCycle: "h23",
+    })
+      .formatToParts(new Date())
+      .find((part) => part.type === "hour")?.value,
+  );
+
+  if (hour < 12) return "Good morning";
+  if (hour < 17) return "Good afternoon";
+  return "Good evening";
+}
+
 function Home() {
   const { profile } = usePlan();
   const [subjects, setSubjects] = useState<SubjectRow[]>([]);
   const [loading, setLoading] = useState(true);
 
   const firstName = profile?.name?.trim().split(" ")[0] || "there";
+  const greeting = getIndianGreeting();
 
   useEffect(() => {
     let cancelled = false;
@@ -190,7 +207,7 @@ function Home() {
     <div className="min-h-screen bg-background pb-24">
       <AppHeader
         accent="cyan"
-        title={`Hey, ${firstName}! 👋`}
+        title={`${greeting}, ${firstName}! 👋`}
         subtitle={
           totalLive > 0 ? (
             <span className="inline-flex items-center gap-1.5 font-medium text-success">
