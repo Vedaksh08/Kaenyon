@@ -135,6 +135,12 @@ export const JITSI_INTERFACE_CONFIG = {
 export function jitsiConfigOverwrite(opts: { startMuted: boolean }) {
   return {
     prejoinPageEnabled: false,
+    // Jitsi ships telemetry to Amplitude and avatars from Gravatar. Brave,
+    // uBlock and most school networks block both, and every blocked request
+    // surfaced as an error event. Turning them off removes the noise entirely
+    // and keeps student data out of a third party we do not need.
+    analytics: { disabled: true, rtcstatsEnabled: false },
+    disableThirdPartyRequests: true,
     startWithAudioMuted: opts.startMuted,
     startWithVideoMuted: false,
     disableDeepLinking: true,

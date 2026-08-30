@@ -137,10 +137,21 @@ export function useJitsi(opts: {
           if (!disposed) onLeaveRef.current();
         }) as never);
 
-        api.addListener("errorOccurred", ((e: { error?: { message?: string } }) => {
+        api.addListener("errorOccurred", ((e: {
+          error?: { isFatal?: boolean; message?: string; name?: string };
+        }) => {
           if (disposed) return;
-          console.error("[jitsi] error", e);
-          setError(e?.error?.message ?? "The classroom hit an error.");
+          const err = e?.error;
+          // Jitsi raises this for plenty of things the meeting survives — a
+          // blocked analytics request, a camera that is already in use, a
+          // failed device enumeration. Treating them all as fatal meant an ad
+          // blocker swallowing one telemetry POST tore down a working class.
+          if (!err?.isFatal) {
+            console.warn("[jitsi] non-fatal", err?.name ?? "error", err?.message ?? "");
+            return;
+          }
+          console.error("[jitsi] fatal", err);
+          setError(err.message || "The classroom hit an error.");
           setStatus("error");
         }) as never);
       } catch (e) {
