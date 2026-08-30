@@ -136,6 +136,18 @@ function Classroom() {
     unreadChat,
   } = jitsi;
 
+  // Surfaces the "answer the Jitsi prompt" hint once joining has clearly
+  // stalled, rather than the moment it starts.
+  const [slowJoin, setSlowJoin] = useState(false);
+  useEffect(() => {
+    if (status !== "joining") {
+      setSlowJoin(false);
+      return;
+    }
+    const t = window.setTimeout(() => setSlowJoin(true), 12_000);
+    return () => window.clearTimeout(t);
+  }, [status]);
+
   // Students start muted in a 30-person room; say so once rather than leaving
   // someone wondering why nobody can hear them.
   useEffect(() => {
@@ -194,7 +206,15 @@ function Classroom() {
       <main className="relative min-h-0 flex-1">
         <div ref={containerRef} className="absolute inset-0 [&>iframe]:h-full [&>iframe]:w-full" />
 
-        {status !== "joined" && (
+        {/* Only cover the iframe when there is nothing behind it to cover, or
+         * when the meeting has failed outright.
+         *
+         * This used to render whenever status !== "joined", which meant that
+         * once Jitsi loaded and showed something needing a click — meet.jit.si
+         * asks the first person to authenticate before it will start a room —
+         * the prompt sat behind an opaque panel that also swallowed the click.
+         * The meeting could never start, so it looked stuck on "Joining...". */}
+        {(status === "loading" || status === "error") && (
           <div className="absolute inset-0 z-10 flex items-center justify-center bg-room px-6">
             {status === "error" ? (
               <div className="max-w-sm text-center">
@@ -221,14 +241,38 @@ function Classroom() {
             ) : (
               <div className="text-center">
                 <PathwaayMark className="mx-auto h-14 w-14 animate-pulse" />
-                <p className="mt-4 text-sm font-medium">
-                  {status === "loading" ? "Preparing your classroom…" : "Joining…"}
-                </p>
+                <p className="mt-4 text-sm font-medium">Preparing your classroom…</p>
                 <p className="mt-1 text-xs text-white/40">
                   Allow camera and microphone when your browser asks.
                 </p>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Joining: a badge, not a curtain. Jitsi renders its own connecting
+         * state underneath and must stay clickable. */}
+        {status === "joining" && (
+          <div className="pointer-events-none absolute inset-x-0 top-4 z-10 flex justify-center px-4">
+            <div className="flex items-center gap-2 rounded-full bg-room-card/90 px-4 py-2 text-xs font-medium text-white/80 shadow-elevated ring-1 ring-white/10 backdrop-blur">
+              <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white/80" />
+              Joining…
+            </div>
+          </div>
+        )}
+
+        {/* If the handshake has not completed after a while, the cause is
+         * almost always meet.jit.si waiting for someone to authenticate. Say
+         * so instead of spinning forever. */}
+        {status === "joining" && slowJoin && (
+          <div className="absolute inset-x-0 bottom-4 z-10 flex justify-center px-4">
+            <div className="max-w-md rounded-xl border border-warning/40 bg-room-card/95 px-4 py-3 text-center shadow-elevated backdrop-blur">
+              <p className="text-xs font-semibold text-warning">Still joining</p>
+              <p className="mt-1 text-[11px] leading-relaxed text-white/60">
+                If you can see a Jitsi prompt above, answer it — the public server asks the first
+                person in a room to sign in. Everyone else can then join straight through.
+              </p>
+            </div>
           </div>
         )}
       </main>

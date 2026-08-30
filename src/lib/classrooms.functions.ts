@@ -6,12 +6,10 @@ import { z } from "zod";
  * subject at all times. When rooms fill up, new ones are created automatically.
  */
 const OPEN_TARGET = 3;
-// Peer-to-peer video is a full mesh: everyone connects directly to everyone
-// else, so cost grows quadratically. At 20 people each browser holds 19
-// connections and uploads ~4.8 Mbps, which home wifi cannot sustain — rooms
-// degraded into "some see some, nobody sees everyone". Six is what a mesh
-// actually carries. Raise this when the SFU migration lands.
-const DEFAULT_CAPACITY = 6;
+// Jitsi routes video through an SFU, so room size no longer multiplies the
+// work each browser does. Back to the original 30 after the peer-to-peer mesh
+// forced it down to 6.
+const DEFAULT_CAPACITY = 30;
 const PRESENCE_WINDOW_MS = 2 * 60 * 1000;
 
 export const ensureOpenClassrooms = createServerFn({ method: "POST" })
