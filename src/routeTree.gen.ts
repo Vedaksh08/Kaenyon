@@ -22,6 +22,7 @@ import { Route as AuthenticatedProfileRouteImport } from './routes/_authenticate
 import { Route as AuthenticatedRanksRouteImport } from './routes/_authenticated/ranks'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthCallbackRouteImport } from './routes/auth.callback'
+import { Route as AuthenticatedClassroomClassIdRouteImport } from './routes/_authenticated/classroom.$classId'
 import { Route as AuthenticatedRoomRoomIdRouteImport } from './routes/_authenticated/room.$roomId'
 import { Route as AuthenticatedSubjectSubjectRouteImport } from './routes/_authenticated/subject.$subject'
 import { Route as AuthenticatedUUserIdRouteImport } from './routes/_authenticated/u.$userId'
@@ -90,6 +91,12 @@ const AuthCallbackRoute = AuthCallbackRouteImport.update({
   path: '/auth/callback',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedClassroomClassIdRoute =
+  AuthenticatedClassroomClassIdRouteImport.update({
+    id: '/classroom/$classId',
+    path: '/classroom/$classId',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedRoomRoomIdRoute = AuthenticatedRoomRoomIdRouteImport.update({
   id: '/room/$roomId',
   path: '/room/$roomId',
@@ -120,6 +127,7 @@ export interface FileRoutesByFullPath {
   '/ranks': typeof AuthenticatedRanksRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/auth/callback': typeof AuthCallbackRoute
+  '/classroom/$classId': typeof AuthenticatedClassroomClassIdRoute
   '/room/$roomId': typeof AuthenticatedRoomRoomIdRoute
   '/subject/$subject': typeof AuthenticatedSubjectSubjectRoute
   '/u/$userId': typeof AuthenticatedUUserIdRoute
@@ -137,6 +145,7 @@ export interface FileRoutesByTo {
   '/ranks': typeof AuthenticatedRanksRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/auth/callback': typeof AuthCallbackRoute
+  '/classroom/$classId': typeof AuthenticatedClassroomClassIdRoute
   '/room/$roomId': typeof AuthenticatedRoomRoomIdRoute
   '/subject/$subject': typeof AuthenticatedSubjectSubjectRoute
   '/u/$userId': typeof AuthenticatedUUserIdRoute
@@ -156,6 +165,7 @@ export interface FileRoutesById {
   '/_authenticated/ranks': typeof AuthenticatedRanksRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/auth/callback': typeof AuthCallbackRoute
+  '/_authenticated/classroom/$classId': typeof AuthenticatedClassroomClassIdRoute
   '/_authenticated/room/$roomId': typeof AuthenticatedRoomRoomIdRoute
   '/_authenticated/subject/$subject': typeof AuthenticatedSubjectSubjectRoute
   '/_authenticated/u/$userId': typeof AuthenticatedUUserIdRoute
@@ -175,6 +185,7 @@ export interface FileRouteTypes {
     | '/ranks'
     | '/settings'
     | '/auth/callback'
+    | '/classroom/$classId'
     | '/room/$roomId'
     | '/subject/$subject'
     | '/u/$userId'
@@ -192,6 +203,7 @@ export interface FileRouteTypes {
     | '/ranks'
     | '/settings'
     | '/auth/callback'
+    | '/classroom/$classId'
     | '/room/$roomId'
     | '/subject/$subject'
     | '/u/$userId'
@@ -210,6 +222,7 @@ export interface FileRouteTypes {
     | '/_authenticated/ranks'
     | '/_authenticated/settings'
     | '/auth/callback'
+    | '/_authenticated/classroom/$classId'
     | '/_authenticated/room/$roomId'
     | '/_authenticated/subject/$subject'
     | '/_authenticated/u/$userId'
@@ -318,6 +331,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthCallbackRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authenticated/classroom/$classId': {
+      id: '/_authenticated/classroom/$classId'
+      path: '/classroom/$classId'
+      fullPath: '/classroom/$classId'
+      preLoaderRoute: typeof AuthenticatedClassroomClassIdRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/room/$roomId': {
       id: '/_authenticated/room/$roomId'
       path: '/room/$roomId'
@@ -349,6 +369,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedProfileRoute: typeof AuthenticatedProfileRoute
   AuthenticatedRanksRoute: typeof AuthenticatedRanksRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
+  AuthenticatedClassroomClassIdRoute: typeof AuthenticatedClassroomClassIdRoute
   AuthenticatedRoomRoomIdRoute: typeof AuthenticatedRoomRoomIdRoute
   AuthenticatedSubjectSubjectRoute: typeof AuthenticatedSubjectSubjectRoute
   AuthenticatedUUserIdRoute: typeof AuthenticatedUUserIdRoute
@@ -361,6 +382,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedProfileRoute: AuthenticatedProfileRoute,
   AuthenticatedRanksRoute: AuthenticatedRanksRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
+  AuthenticatedClassroomClassIdRoute: AuthenticatedClassroomClassIdRoute,
   AuthenticatedRoomRoomIdRoute: AuthenticatedRoomRoomIdRoute,
   AuthenticatedSubjectSubjectRoute: AuthenticatedSubjectSubjectRoute,
   AuthenticatedUUserIdRoute: AuthenticatedUUserIdRoute,

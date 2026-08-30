@@ -9,35 +9,58 @@ type SignalPayload = {
   candidate?: RTCIceCandidateInit;
 };
 
-// STUN alone only works when both peers can be reached directly. On mobile
-// data, university wifi, or any symmetric NAT the candidates never pair and the
-// tile stays black — a TURN relay is the only fix.
+// STUN tells a browser its public address; that is enough only when both peers
+// can reach each other directly. Behind symmetric NAT — most campus wifi, most
+// mobile data — the candidates never pair and the connection fails. A TURN
+// relay carries the media instead, and is the difference between "some people
+// can see each other" and "everyone can".
 //
-// These are openrelay's free public servers: fine for getting started, but they
-// are rate-limited and not something to launch on. Swap in a paid TURN provider
-// (Twilio, Cloudflare Calls, Metered) or self-hosted coturn before real use.
+// The openrelay.metered.ca servers previously listed here no longer exist: the
+// hostname does not resolve and every port refuses TCP. Because a dead TURN
+// server fails silently — ICE just never finds a working pair — this looked
+// like a random per-pair bug rather than missing infrastructure.
+//
+// Set VITE_TURN_URL / VITE_TURN_USERNAME / VITE_TURN_CREDENTIAL to your own
+// relay (Cloudflare, Twilio, Metered, or self-hosted coturn). Without it the
+// app still works for peers that can connect directly, and warns in the
+// console for those that cannot.
+const TURN_URL = import.meta.env.VITE_TURN_URL as string | undefined;
+const TURN_USERNAME = import.meta.env.VITE_TURN_USERNAME as string | undefined;
+const TURN_CREDENTIAL = import.meta.env.VITE_TURN_CREDENTIAL as string | undefined;
+
+export const HAS_TURN = Boolean(TURN_URL && TURN_USERNAME && TURN_CREDENTIAL);
+
 const ICE_SERVERS: RTCConfiguration = {
   iceServers: [
-    { urls: "stun:stun.l.google.com:19302" },
-    { urls: "stun:stun1.l.google.com:19302" },
+    // Several STUN hosts: if one is blocked on a network, the others still
+    // give the browser a reflexive candidate.
     {
-      urls: "turn:openrelay.metered.ca:80",
-      username: "openrelayproject",
-      credential: "openrelayproject",
+      urls: [
+        "stun:stun.l.google.com:19302",
+        "stun:stun1.l.google.com:19302",
+        "stun:stun.cloudflare.com:3478",
+      ],
     },
-    {
-      urls: "turn:openrelay.metered.ca:443",
-      username: "openrelayproject",
-      credential: "openrelayproject",
-    },
-    {
-      urls: "turn:openrelay.metered.ca:443?transport=tcp",
-      username: "openrelayproject",
-      credential: "openrelayproject",
-    },
+    ...(HAS_TURN
+      ? [
+          {
+            urls: TURN_URL!.split(",").map((u) => u.trim()),
+            username: TURN_USERNAME!,
+            credential: TURN_CREDENTIAL!,
+          },
+        ]
+      : []),
   ],
   iceCandidatePoolSize: 4,
 };
+
+if (typeof window !== "undefined" && !HAS_TURN) {
+  console.warn(
+    "[rtc] No TURN server configured. Peers that cannot reach each other " +
+      "directly (campus wifi, mobile data) will not connect. Set " +
+      "VITE_TURN_URL / VITE_TURN_USERNAME / VITE_TURN_CREDENTIAL.",
+  );
+}
 
 type Peer = {
   pc: RTCPeerConnection;
@@ -77,6 +100,10 @@ export function useWebrtcMesh(opts: {
   // Exposed so callers can piggyback their own broadcasts (whiteboard strokes,
   // moderator mutes) on the channel that already exists for this session.
   const [channel, setChannel] = useState<ReturnType<typeof supabase.channel> | null>(null);
+  // Peers whose connection gave up. Surfaced so a tile can say "couldn't
+  // connect" instead of sitting black, which is indistinguishable from a
+  // camera that is simply off.
+  const [failedPeers, setFailedPeers] = useState<Set<string>>(new Set());
 
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const peersRef = useRef<Map<string, Peer>>(new Map());
@@ -224,10 +251,24 @@ export function useWebrtcMesh(opts: {
               /* ignore */
             }
           } else {
+            setFailedPeers((prev) => {
+              if (prev.has(peerId)) return prev;
+              const next = new Set(prev);
+              next.add(peerId);
+              return next;
+            });
             dropPeer(peerId);
           }
         }
-        if (pc.connectionState === "connected") peer.iceRestarts = 0;
+        if (pc.connectionState === "connected") {
+          peer.iceRestarts = 0;
+          setFailedPeers((prev) => {
+            if (!prev.has(peerId)) return prev;
+            const next = new Set(prev);
+            next.delete(peerId);
+            return next;
+          });
+        }
         if (pc.connectionState === "closed") dropPeer(peerId);
       };
 
@@ -510,5 +551,5 @@ export function useWebrtcMesh(opts: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [peerIds.join(","), remoteStreams]);
 
-  return { remoteStreams, channel };
+  return { remoteStreams, channel, failedPeers };
 }

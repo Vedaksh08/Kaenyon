@@ -238,9 +238,12 @@ function SubjectPage() {
                       Room full
                     </button>
                   ) : (
+                    // Jitsi-backed classroom. The peer-to-peer room is still
+                    // reachable at /room/$roomId; it could not carry more than
+                    // a handful of cameras, which is why this is the way in.
                     <Link
-                      to="/room/$roomId"
-                      params={{ roomId: c.id }}
+                      to="/classroom/$classId"
+                      params={{ classId: c.id }}
                       className="mt-5 block w-full rounded-xl bg-primary py-2.5 text-center text-sm font-semibold text-primary-foreground shadow-brand transition hover:bg-brand-deep active:scale-[0.99]"
                     >
                       Join room

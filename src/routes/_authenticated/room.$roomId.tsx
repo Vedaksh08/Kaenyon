@@ -19,6 +19,7 @@ import {
   Smartphone,
   EyeOff,
   ShieldAlert,
+  WifiOff,
 } from "lucide-react";
 import { toast } from "sonner";
 import { usePlan } from "@/lib/plan-context";
@@ -76,13 +77,7 @@ function RemoteVideo({
  * Full-screen and unmissable, like the AFK warning. A toast was too easy to
  * miss while the strike count kept climbing toward removal.
  */
-function NsfwWarning({
-  strikes,
-  onTurnOffCamera,
-}: {
-  strikes: number;
-  onTurnOffCamera: () => void;
-}) {
+function NsfwWarning({ onTurnOffCamera }: { onTurnOffCamera: () => void }) {
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-danger/30 p-4 backdrop-blur-sm">
       <div className="w-full max-w-sm rounded-xl border border-danger/40 bg-room-card p-6 text-center shadow-elevated">
@@ -91,17 +86,9 @@ function NsfwWarning({
         </div>
         <h3 className="mt-4 text-lg font-bold text-white">Inappropriate content detected</h3>
         <p className="mt-2 text-sm text-white/70">
-          Your camera is showing content that isn't allowed in a classroom. Cover up or turn your
-          camera off now.
+          Your camera showed content that isn't allowed in a classroom, so you've been removed from
+          the room.
         </p>
-        <div className="mt-4 rounded-lg bg-danger/10 px-4 py-3">
-          <div className="text-xs font-semibold uppercase tracking-wide text-danger">
-            Warning {strikes} of {NSFW_STRIKES_MAX}
-          </div>
-          <div className="mt-1 text-xs text-white/60">
-            You'll be removed from the classroom after {NSFW_STRIKES_MAX} warnings.
-          </div>
-        </div>
         <button
           onClick={onTurnOffCamera}
           className="mt-5 w-full rounded-lg bg-danger px-4 py-2.5 text-sm font-semibold text-white hover:bg-danger/90"
@@ -187,9 +174,6 @@ interface Doubt {
   status: "open" | "offer" | "solving";
   text: string;
 }
-
-/** Consecutive unsafe samples before removal from the classroom. */
-const NSFW_STRIKES_MAX = 3;
 
 /** COCO labels that mean "a phone is in shot". */
 const PHONE_LABELS = new Set(["cell phone", "mobile phone", "telephone"]);
@@ -496,7 +480,6 @@ function Room() {
     const SAMPLE_MS = 1000;
     const LOAD_DELAY_MS = 2000;
     const THRESHOLD = 0.85;
-    const STRIKES_MAX = NSFW_STRIKES_MAX;
     let cancelled = false;
     let interval: number | null = null;
     let timer: number | null = null;
@@ -606,28 +589,8 @@ function Room() {
           });
         }
 
-        // Strikes are counted server-side: an in-memory tally resets on
-        // refresh, and RLS would let a student clear their own ban.
-        const { data: result } = await supabase.rpc("record_moderation_strike", {
-          _kind: "nsfw",
-          _classroom_id: roomId,
-          _score: Number(unsafe.toFixed(2)),
-        });
-        const row = Array.isArray(result) ? result[0] : null;
-        const bannedUntil = row?.banned_until ? new Date(row.banned_until) : null;
-
-        if (bannedUntil && bannedUntil.getTime() > Date.now()) {
-          toast.error("You're suspended for 20 minutes for inappropriate content.");
-          nav({ to: "/suspended" });
-        } else {
-          const left = Math.max(0, STRIKES_MAX - (row?.strike_count ?? 1));
-          toast.error(
-            left > 0
-              ? `Removed — inappropriate content. ${left} more and you're suspended for 20 minutes.`
-              : "Removed from classroom — inappropriate content detected",
-          );
-          nav({ to: "/home" });
-        }
+        toast.error("Removed from classroom — inappropriate content detected");
+        nav({ to: "/home" });
       } catch {
         // ignore transient classify errors
       }
@@ -834,7 +797,7 @@ function Room() {
 
   // Live peer-to-peer video with everyone else in the classroom.
   const peerIds = useMemo(() => remoteParticipants.map((p) => p.id), [remoteParticipants]);
-  const { remoteStreams } = useWebrtcMesh({
+  const { remoteStreams, failedPeers } = useWebrtcMesh({
     roomId,
     userId: userId ? sessionKeyRef.current : null,
     peerIds,
@@ -1441,7 +1404,6 @@ function Room() {
          * too — this branch returns before the classroom's copy. */}
         {nsfwWarn && (
           <NsfwWarning
-            strikes={nsfwStrikes}
             onTurnOffCamera={() => {
               void ensureStream({ audio: false, video: false });
               setCam(false);
@@ -1639,6 +1601,17 @@ function Room() {
                     />
                   ) : !p.you && remoteStreams[p.id] ? (
                     <RemoteVideo stream={remoteStreams[p.id]} />
+                  ) : !p.you && failedPeers.has(p.id) ? (
+                    // A failed connection used to render as a black tile, which
+                    // looks identical to a camera that is off. Say what is
+                    // actually wrong.
+                    <div className="flex flex-col items-center gap-1.5 px-3 text-center text-white/50">
+                      <WifiOff className="h-5 w-5 text-danger" />
+                      <span className="text-[11px] font-medium">Couldn't connect</span>
+                      <span className="text-[10px] leading-tight text-white/35">
+                        Your networks can't reach each other
+                      </span>
+                    </div>
                   ) : !p.you && p.cam ? (
                     <div className="flex flex-col items-center gap-2 text-white/50">
                       <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white/70" />
@@ -1999,7 +1972,6 @@ function Room() {
 
       {nsfwWarn && (
         <NsfwWarning
-          strikes={nsfwStrikes}
           onTurnOffCamera={() => {
             void ensureStream({ audio: false, video: false });
             setCam(false);
