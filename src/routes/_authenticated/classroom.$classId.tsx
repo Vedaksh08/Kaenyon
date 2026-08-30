@@ -9,6 +9,7 @@ import {
   MonitorUp,
   PhoneOff,
   ShieldCheck,
+  MessageSquare,
   Users,
   Video,
   VideoOff,
@@ -18,6 +19,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { PathwaayMark, PathwaayWordmark } from "@/components/brand";
 import { createClassroomToken } from "@/lib/livekit.functions";
 import { useLiveKit } from "@/lib/use-livekit";
+import { DoubtsPanel } from "@/components/doubts-panel";
+import { markPresence, clearPresence } from "@/lib/social";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/classroom/$classId")({
@@ -37,6 +40,7 @@ interface Session {
   isModerator: boolean;
   title: string;
   capacity: number;
+  identity: string;
 }
 
 function Classroom() {
@@ -45,6 +49,7 @@ function Classroom() {
 
   const [session, setSession] = useState<Session | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [doubtsOpen, setDoubtsOpen] = useState(true);
 
   // The server decides whether this student may join and signs a token saying
   // so. Nothing on this page can grant access by itself.
@@ -84,9 +89,22 @@ function Classroom() {
 
   useEffect(() => {
     if (live.status === "connected" && !isModerator) {
-      toast("You joined muted — tap the mic to speak.", { id: "joined-muted" });
+      toast("The classroom is silent — type your doubt in the panel.", { id: "silent-room" });
     }
   }, [live.status, isModerator]);
+
+  // Presence, so "N studying now" on Home and the subject page reflects who is
+  // actually in a class. Without it those counts sit at zero.
+  useEffect(() => {
+    const uid = session?.identity;
+    if (!uid || live.status !== "connected") return;
+    void markPresence(uid, classId, null);
+    const beat = window.setInterval(() => void markPresence(uid, classId, null), 30_000);
+    return () => {
+      window.clearInterval(beat);
+      void clearPresence(uid);
+    };
+  }, [session?.identity, classId, live.status]);
 
   if (error) {
     return (
@@ -160,57 +178,87 @@ function Classroom() {
         </div>
       </header>
 
-      <main className="min-h-0 flex-1 overflow-y-auto p-3">
-        {connecting ? (
-          <div className="flex h-full items-center justify-center">
-            <div className="text-center">
-              <PathwaayMark className="mx-auto h-14 w-14 animate-pulse" />
-              <p className="mt-4 text-sm font-medium">Joining your classroom…</p>
-              <p className="mt-1 text-xs text-white/40">
-                Allow camera and microphone when your browser asks.
-              </p>
+      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+        <main className="min-h-0 flex-1 overflow-y-auto p-3">
+          {connecting ? (
+            <div className="flex h-full items-center justify-center">
+              <div className="text-center">
+                <PathwaayMark className="mx-auto h-14 w-14 animate-pulse" />
+                <p className="mt-4 text-sm font-medium">Joining your classroom…</p>
+                <p className="mt-1 text-xs text-white/40">
+                  Allow camera and microphone when your browser asks.
+                </p>
+              </div>
             </div>
-          </div>
-        ) : (
-          // auto-fit keeps tiles sensible from 1 person to 30 without a
-          // hardcoded breakpoint per participant count.
-          <div className="grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-3">
-            <Tile
-              name="You"
-              track={live.localVideo}
-              muted
-              mirrored
-              micMuted={live.micMuted}
-              isYou
-              isTeacher={isModerator}
-              handRaised={live.handRaised}
-            />
-            {live.peers.map((p) => (
+          ) : (
+            // auto-fit keeps tiles sensible from 1 person to 30 without a
+            // hardcoded breakpoint per participant count.
+            <div className="grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-3">
               <Tile
-                key={p.identity}
-                name={p.name}
-                track={p.video}
-                audioTrack={p.audio}
-                micMuted={p.micMuted}
-                speaking={p.speaking}
-                isScreenShare={p.isScreenShare}
-                handRaised={live.handsRaised.has(p.identity)}
+                name="You"
+                track={live.localVideo}
+                muted
+                mirrored
+                micMuted={live.micMuted}
+                isYou
+                isTeacher={isModerator}
+                handRaised={live.handRaised}
               />
-            ))}
-          </div>
-        )}
-      </main>
+              {live.peers.map((p) => (
+                <Tile
+                  key={p.identity}
+                  name={p.name}
+                  track={p.video}
+                  audioTrack={p.audio}
+                  micMuted={p.micMuted}
+                  speaking={p.speaking}
+                  isScreenShare={p.isScreenShare}
+                  handRaised={live.handsRaised.has(p.identity)}
+                />
+              ))}
+            </div>
+          )}
+        </main>
+
+        {doubtsOpen && session && <DoubtsPanel classroomId={classId} myUserId={session.identity} />}
+      </div>
 
       <div className="shrink-0 border-t border-white/10 bg-room-card/60 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur">
         <div className="mx-auto flex max-w-2xl flex-wrap items-center justify-center gap-2">
+          {/* Pathwaay's classroom is silent by design — everyone's camera is on,
+           * nobody talks, and doubts are typed. Only a teacher speaks here. */}
           <Ctl
-            label={live.micMuted ? "Unmute" : "Mute"}
-            onClick={() => void live.toggleMic()}
+            label={
+              isModerator
+                ? live.micMuted
+                  ? "Unmute"
+                  : "Mute"
+                : "The classroom is silent — type your doubt instead"
+            }
+            onClick={() => {
+              if (!isModerator) {
+                toast("The classroom is silent. Type your doubt in the panel.");
+                return;
+              }
+              void live.toggleMic();
+            }}
             disabled={live.status !== "connected"}
-            active={!live.micMuted}
+            active={isModerator && !live.micMuted}
             danger={live.micMuted}
           >
-            {live.micMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+            {isModerator && !live.micMuted ? (
+              <Mic className="h-5 w-5" />
+            ) : (
+              <MicOff className="h-5 w-5" />
+            )}
+          </Ctl>
+
+          <Ctl
+            label={doubtsOpen ? "Hide doubts" : "Show doubts"}
+            onClick={() => setDoubtsOpen((v) => !v)}
+            active={doubtsOpen}
+          >
+            <MessageSquare className="h-5 w-5" />
           </Ctl>
 
           <Ctl
