@@ -7,6 +7,24 @@ import {
   type JitsiApi,
 } from "./jitsi";
 
+/**
+ * Jitsi's error strings are internal keys. Translate the ones a student can
+ * actually act on; anything else falls through to the raw message so a report
+ * still carries something useful.
+ */
+function explainJitsiError(err: { message?: string; name?: string }): string {
+  const key = `${err.name ?? ""} ${err.message ?? ""}`.toLowerCase();
+  if (key.includes("membersonly") || key.includes("lobby")) {
+    return "This video server needs someone to sign in before the room can start. Ask an admin to switch VITE_JITSI_DOMAIN to a server that allows open rooms.";
+  }
+  if (key.includes("password")) return "This room is password protected.";
+  if (key.includes("maxusers") || key.includes("full")) return "This room is full.";
+  if (key.includes("connection.droppe") || key.includes("disconnect")) {
+    return "Lost connection to the video server. Check your internet and try again.";
+  }
+  return err.message || "The classroom hit an error.";
+}
+
 export interface JitsiParticipant {
   id: string;
   name: string;
@@ -151,7 +169,7 @@ export function useJitsi(opts: {
             return;
           }
           console.error("[jitsi] fatal", err);
-          setError(err.message || "The classroom hit an error.");
+          setError(explainJitsiError(err));
           setStatus("error");
         }) as never);
       } catch (e) {

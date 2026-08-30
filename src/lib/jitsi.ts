@@ -29,10 +29,24 @@ declare global {
  * Swap this for your own server and nothing else has to change:
  *   VITE_JITSI_DOMAIN="video.pathwaay.com"
  */
-export const JITSI_DOMAIN = (import.meta.env.VITE_JITSI_DOMAIN as string) || "meet.jit.si";
+/**
+ * Default is NOT meet.jit.si.
+ *
+ * meet.jit.si sets `anonymousdomain: 'guest.meet.jit.si'`, which puts guests on
+ * a domain that cannot start a conference — the room stays members-only until
+ * someone authenticates with Google, and everyone else is parked in a lobby.
+ * That surfaced as `conference.connectionError.membersOnly` and made the
+ * classroom unusable without every class having a Google-linked host.
+ *
+ * meet.ffmuc.net (Freifunk München) leaves anonymousdomain and authdomain
+ * commented out, so anyone can create and join a room. It is a volunteer-run
+ * community server though: fine for building and testing, not something to
+ * depend on for real classes. Self-host before that point.
+ */
+export const JITSI_DOMAIN = (import.meta.env.VITE_JITSI_DOMAIN as string) || "meet.ffmuc.net";
 
-/** True while we are on Jitsi's shared public instance. */
-export const IS_PUBLIC_JITSI = JITSI_DOMAIN === "meet.jit.si";
+/** True on any shared community server — i.e. not our own deployment. */
+export const IS_PUBLIC_JITSI = /(^|\.)(jit\.si|ffmuc\.net)$/.test(JITSI_DOMAIN);
 
 /**
  * Salt for the room-name hash.
