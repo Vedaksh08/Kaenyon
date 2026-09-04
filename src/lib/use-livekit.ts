@@ -1,25 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  ConnectionState,
-  Room,
-  RoomEvent,
-  Track,
-  type RemoteParticipant,
-  type RemoteTrack,
-} from "livekit-client";
-
-export interface Peer {
-  identity: string;
-  name: string;
-  /** Camera track, once subscribed. */
-  video?: MediaStreamTrack;
-  audio?: MediaStreamTrack;
-  isScreenShare?: boolean;
-  speaking: boolean;
-  micMuted: boolean;
-}
-
-export type LiveStatus = "connecting" | "connected" | "reconnecting" | "error";
+import { Room, RoomEvent, Track, type RemoteParticipant, type RemoteTrack } from "livekit-client";
+import type { ClassroomVideo, LiveStatus, Peer } from "@/lib/classroom-video";
 
 /**
  * One LiveKit room.
@@ -39,7 +20,7 @@ export function useLiveKit(opts: {
   /** Students join muted; a class where 30 mics open at once is unusable. */
   startMuted: boolean;
   onDisconnected: () => void;
-}) {
+}): ClassroomVideo {
   const { token, url, startMuted, onDisconnected } = opts;
 
   const roomRef = useRef<Room | null>(null);
@@ -252,7 +233,6 @@ export function useLiveKit(opts: {
     localVideo,
     handRaised,
     handsRaised,
-    connectionState: roomRef.current?.state ?? ConnectionState.Disconnected,
     toggleMic,
     toggleCam,
     toggleShare,

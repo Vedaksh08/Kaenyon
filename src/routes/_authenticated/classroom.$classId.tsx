@@ -17,8 +17,9 @@ import {
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { PathwaayMark, PathwaayWordmark } from "@/components/brand";
-import { createClassroomToken } from "@/lib/livekit.functions";
+import { createClassroomToken } from "@/lib/classroom-video.functions";
 import { useLiveKit } from "@/lib/use-livekit";
+import { usePathwaaySfu } from "@/lib/use-pathwaay-sfu";
 import { DoubtsPanel } from "@/components/doubts-panel";
 import { markPresence, clearPresence } from "@/lib/social";
 import { cn } from "@/lib/utils";
@@ -35,12 +36,17 @@ export const Route = createFileRoute("/_authenticated/classroom/$classId")({
 });
 
 interface Session {
-  token: string;
-  url: string;
+  /** Which video backend the server picked. See classroom-video.functions.ts. */
+  mode: "sfu" | "livekit";
+  token: string | null;
+  url: string | null;
+  sfuUrl: string | null;
+  roomName: string;
   isModerator: boolean;
   title: string;
   capacity: number;
   identity: string;
+  name: string;
 }
 
 function Classroom() {
@@ -75,12 +81,29 @@ function Classroom() {
     };
   }, [classId, nav]);
 
-  const live = useLiveKit({
-    token: session?.token ?? null,
-    url: session?.url ?? null,
+  // Both hooks are called every render because hooks cannot be conditional;
+  // the one that is not in use gets null inputs and stays idle.
+  const usingSfu = session?.mode === "sfu";
+  const goHome = () => nav({ to: "/home" });
+
+  const livekit = useLiveKit({
+    token: usingSfu ? null : (session?.token ?? null),
+    url: usingSfu ? null : (session?.url ?? null),
     startMuted: !session?.isModerator,
-    onDisconnected: () => nav({ to: "/home" }),
+    onDisconnected: goHome,
   });
+
+  const sfu = usePathwaaySfu({
+    url: usingSfu ? (session?.sfuUrl ?? null) : null,
+    roomId: usingSfu ? (session?.roomName ?? null) : null,
+    identity: usingSfu ? (session?.identity ?? null) : null,
+    name: session?.name ?? "Student",
+    isModerator: session?.isModerator ?? false,
+    startMuted: !session?.isModerator,
+    onDisconnected: goHome,
+  });
+
+  const live = usingSfu ? sfu : livekit;
 
   const isModerator = session?.isModerator ?? false;
   const total = live.peers.length + 1;

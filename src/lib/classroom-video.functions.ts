@@ -2,13 +2,19 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
 /**
- * Mints a LiveKit access token for one classroom.
+ * Decides whether a student may join a classroom, and hands back whatever the
+ * chosen video backend needs to connect.
  *
- * This has to run on the server: the token is signed with LIVEKIT_API_SECRET,
- * and anything reaching the browser is public. The secret has no VITE_ prefix
- * and the SDK is imported inside the handler, so neither can be bundled into
- * the client — the same pattern classrooms.functions.ts uses for the Supabase
- * service role key.
+ * Two backends are supported. Setting SFU_URL selects Pathwaay's own mediasoup
+ * server; otherwise LiveKit Cloud is used. The choice lives here rather than in
+ * the browser so switching is one environment variable, and so the same
+ * authorisation runs either way.
+ *
+ * This has to run on the server: the LiveKit token is signed with
+ * LIVEKIT_API_SECRET, and anything reaching the browser is public. The secret
+ * has no VITE_ prefix and the SDK is imported inside the handler, so neither
+ * can be bundled into the client — the same pattern classrooms.functions.ts
+ * uses for the Supabase service role key.
  *
  * Authorisation is decided here rather than in the page, because a token is a
  * capability: once issued, LiveKit honours it regardless of what our UI thinks.
@@ -27,9 +33,13 @@ export const createClassroomToken = createServerFn({ method: "POST" })
     const apiKey = process.env.LIVEKIT_API_KEY;
     const apiSecret = process.env.LIVEKIT_API_SECRET;
     const url = process.env.LIVEKIT_URL;
-    if (!apiKey || !apiSecret || !url) {
+    // Pathwaay's own mediasoup SFU takes precedence when it is configured.
+    const sfuUrl = process.env.SFU_URL?.trim();
+    const useSfu = Boolean(sfuUrl);
+
+    if (!useSfu && (!apiKey || !apiSecret || !url)) {
       throw new Error(
-        "LiveKit is not configured. Set LIVEKIT_URL, LIVEKIT_API_KEY and LIVEKIT_API_SECRET — see SETUP.md.",
+        "No classroom video server is configured. Set SFU_URL for the Pathwaay SFU, or LIVEKIT_URL, LIVEKIT_API_KEY and LIVEKIT_API_SECRET for LiveKit — see SETUP.md.",
       );
     }
 
@@ -80,14 +90,31 @@ export const createClassroomToken = createServerFn({ method: "POST" })
       if (!canJoin) throw new Error("This classroom is not on your course.");
     }
 
-    const { AccessToken } = await import("livekit-server-sdk");
+    const subjectName = (classroom.subjects as { name: string } | null)?.name ?? "Classroom";
+    const displayName = profile.name?.trim() || "Student";
 
-    // Room name is derived from the classroom id, never supplied by the client.
+    // Room name is derived from the classroom id, never supplied by the client,
+    // so nobody can join a room they were not cleared for by typing an id.
     const roomName = `classroom-${classroom.id}`;
 
-    const at = new AccessToken(apiKey, apiSecret, {
+    const common = {
+      roomName,
+      isModerator,
+      title: `${subjectName} · Room ${classroom.room_number}`,
+      capacity: classroom.capacity,
       identity: user.id,
-      name: profile.name?.trim() || "Student",
+      name: displayName,
+    };
+
+    if (useSfu) {
+      return { mode: "sfu" as const, sfuUrl: sfuUrl!, token: null, url: null, ...common };
+    }
+
+    const { AccessToken } = await import("livekit-server-sdk");
+
+    const at = new AccessToken(apiKey!, apiSecret!, {
+      identity: user.id,
+      name: displayName,
       // Long enough for a full class; LiveKit only checks it when connecting.
       ttl: "4h",
     });
@@ -103,15 +130,11 @@ export const createClassroomToken = createServerFn({ method: "POST" })
       roomAdmin: isModerator,
     });
 
-    const subjectName = (classroom.subjects as { name: string } | null)?.name ?? "Classroom";
-
     return {
+      mode: "livekit" as const,
+      sfuUrl: null,
       token: await at.toJwt(),
-      url,
-      roomName,
-      isModerator,
-      title: `${subjectName} · Room ${classroom.room_number}`,
-      capacity: classroom.capacity,
-      identity: user.id,
+      url: url!,
+      ...common,
     };
   });
