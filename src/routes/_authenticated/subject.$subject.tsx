@@ -238,9 +238,11 @@ function SubjectPage() {
                       Room full
                     </button>
                   ) : (
-                    // Jitsi-backed classroom. The peer-to-peer room is still
-                    // reachable at /room/$roomId; it could not carry more than
-                    // a handful of cameras, which is why this is the way in.
+                    // SFU-backed classroom — LiveKit or our own mediasoup
+                    // server, decided by classroom-video.functions.ts. The
+                    // peer-to-peer room is still reachable at /room/$roomId;
+                    // it could not carry more than a handful of cameras,
+                    // which is why this is the way in.
                     <Link
                       to="/classroom/$classId"
                       params={{ classId: c.id }}
