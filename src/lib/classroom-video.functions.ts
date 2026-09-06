@@ -5,10 +5,11 @@ import { z } from "zod";
  * Decides whether a student may join a classroom, and hands back whatever the
  * chosen video backend needs to connect.
  *
- * Two backends are supported. Setting SFU_URL selects Pathwaay's own mediasoup
- * server; otherwise LiveKit Cloud is used. The choice lives here rather than in
- * the browser so switching is one environment variable, and so the same
- * authorisation runs either way.
+ * Three backends are supported, in priority order: SFU_URL selects Pathwaay's
+ * own mediasoup server, CF_REALTIME_APP_ID selects Cloudflare Realtime, and
+ * LiveKit Cloud is the fallback. The choice lives here rather than in the
+ * browser so switching is one environment variable, and so the same
+ * authorisation runs whichever is in use.
  *
  * This has to run on the server: the LiveKit token is signed with
  * LIVEKIT_API_SECRET, and anything reaching the browser is public. The secret
@@ -33,13 +34,17 @@ export const createClassroomToken = createServerFn({ method: "POST" })
     const apiKey = process.env.LIVEKIT_API_KEY;
     const apiSecret = process.env.LIVEKIT_API_SECRET;
     const url = process.env.LIVEKIT_URL;
-    // Pathwaay's own mediasoup SFU takes precedence when it is configured.
+    // Backends in priority order: our own mediasoup SFU, then Cloudflare
+    // Realtime, then LiveKit. Whichever is configured first wins, so switching
+    // is a matter of setting or clearing one variable.
     const sfuUrl = process.env.SFU_URL?.trim();
     const useSfu = Boolean(sfuUrl);
+    const useCloudflare =
+      !useSfu && Boolean(process.env.CF_REALTIME_APP_ID && process.env.CF_REALTIME_APP_TOKEN);
 
-    if (!useSfu && (!apiKey || !apiSecret || !url)) {
+    if (!useSfu && !useCloudflare && (!apiKey || !apiSecret || !url)) {
       throw new Error(
-        "No classroom video server is configured. Set SFU_URL for the Pathwaay SFU, or LIVEKIT_URL, LIVEKIT_API_KEY and LIVEKIT_API_SECRET for LiveKit — see SETUP.md.",
+        "No classroom video server is configured. Set SFU_URL for the Pathwaay SFU, CF_REALTIME_APP_ID and CF_REALTIME_APP_TOKEN for Cloudflare Realtime, or LIVEKIT_URL, LIVEKIT_API_KEY and LIVEKIT_API_SECRET for LiveKit — see SFU-DEPLOY.md.",
       );
     }
 
@@ -108,6 +113,12 @@ export const createClassroomToken = createServerFn({ method: "POST" })
 
     if (useSfu) {
       return { mode: "sfu" as const, sfuUrl: sfuUrl!, token: null, url: null, ...common };
+    }
+
+    if (useCloudflare) {
+      // The session is opened separately by cloudflare-realtime.functions.ts,
+      // which re-runs this same authorisation before it talks to Cloudflare.
+      return { mode: "cloudflare" as const, sfuUrl: null, token: null, url: null, ...common };
     }
 
     const { AccessToken } = await import("livekit-server-sdk");
