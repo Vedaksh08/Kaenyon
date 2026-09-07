@@ -2,25 +2,19 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
 /**
- * Decides whether a student may join a classroom, and hands back whatever the
- * chosen video backend needs to connect.
+ * Checks whether this student may enter this classroom, and returns what the
+ * page needs to render around the video.
  *
- * Three backends are supported, in priority order: SFU_URL selects Pathwaay's
- * own mediasoup server, CF_REALTIME_APP_ID selects Cloudflare Realtime, and
- * LiveKit Cloud is the fallback. The choice lives here rather than in the
- * browser so switching is one environment variable, and so the same
- * authorisation runs whichever is in use.
+ * Video itself is Cloudflare Realtime, opened separately by
+ * cloudflare-realtime.functions.ts. This call exists because the header and
+ * the mute rules need the room title, capacity and the caller's role before
+ * any media starts.
  *
- * This has to run on the server: the LiveKit token is signed with
- * LIVEKIT_API_SECRET, and anything reaching the browser is public. The secret
- * has no VITE_ prefix and the SDK is imported inside the handler, so neither
- * can be bundled into the client — the same pattern classrooms.functions.ts
- * uses for the Supabase service role key.
- *
- * Authorisation is decided here rather than in the page, because a token is a
- * capability: once issued, LiveKit honours it regardless of what our UI thinks.
+ * Authorisation is decided on the server rather than in the page: whatever the
+ * UI believes, the media layer will only ever hand out a session to somebody
+ * who passed this check.
  */
-export const createClassroomToken = createServerFn({ method: "POST" })
+export const authorizeClassroom = createServerFn({ method: "POST" })
   .inputValidator((data) =>
     z
       .object({
@@ -31,121 +25,20 @@ export const createClassroomToken = createServerFn({ method: "POST" })
       .parse(data),
   )
   .handler(async ({ data }) => {
-    const apiKey = process.env.LIVEKIT_API_KEY;
-    const apiSecret = process.env.LIVEKIT_API_SECRET;
-    const url = process.env.LIVEKIT_URL;
-    // Backends in priority order: our own mediasoup SFU, then Cloudflare
-    // Realtime, then LiveKit. Whichever is configured first wins, so switching
-    // is a matter of setting or clearing one variable.
-    const sfuUrl = process.env.SFU_URL?.trim();
-    const useSfu = Boolean(sfuUrl);
-    const useCloudflare =
-      !useSfu && Boolean(process.env.CF_REALTIME_APP_ID && process.env.CF_REALTIME_APP_TOKEN);
-
-    if (!useSfu && !useCloudflare && (!apiKey || !apiSecret || !url)) {
+    if (!process.env.CF_REALTIME_APP_ID || !process.env.CF_REALTIME_APP_TOKEN) {
       throw new Error(
-        "No classroom video server is configured. Set SFU_URL for the Pathwaay SFU, CF_REALTIME_APP_ID and CF_REALTIME_APP_TOKEN for Cloudflare Realtime, or LIVEKIT_URL, LIVEKIT_API_KEY and LIVEKIT_API_SECRET for LiveKit — see SFU-DEPLOY.md.",
+        "Classroom video is not configured. Set CF_REALTIME_APP_ID and CF_REALTIME_APP_TOKEN — see CLOUDFLARE-SFU.md.",
       );
     }
 
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-
-    // Identify the caller from their Supabase JWT rather than trusting an id
-    // in the request body, which anyone could change.
-    const { data: userData, error: userErr } = await supabaseAdmin.auth.getUser(data.accessToken);
-    const user = userData?.user;
-    if (userErr || !user) throw new Error("Not signed in.");
-
-    const { data: profile } = await supabaseAdmin
-      .from("profiles")
-      .select("name, suspended_until, onboarded_at, course_slug, year")
-      .eq("id", user.id)
-      .maybeSingle();
-
-    if (profile?.suspended_until && new Date(profile.suspended_until).getTime() > Date.now()) {
-      throw new Error("Your account is suspended.");
-    }
-    if (!profile?.onboarded_at) throw new Error("Finish setting up your profile first.");
-
-    const { data: classroom } = await supabaseAdmin
-      .from("classrooms")
-      .select("id, room_number, subject_slug, capacity, subjects(name)")
-      .eq("id", data.classId)
-      .maybeSingle();
-    if (!classroom) throw new Error("That classroom does not exist.");
-
-    // Moderators and admins are the teachers; they may enter any room.
-    const [{ data: isAdmin }, { data: isMod }] = await Promise.all([
-      supabaseAdmin.rpc("has_role", { _user_id: user.id, _role: "admin" }),
-      supabaseAdmin.rpc("has_role", { _user_id: user.id, _role: "moderator" }),
-    ]);
-    const isModerator = Boolean(isAdmin || isMod);
-
-    if (!isModerator) {
-      const year = Math.max(1, parseInt(profile.year ?? "1", 10) || 1);
-      const { data: allowed } = profile.course_slug
-        ? await supabaseAdmin.rpc("get_course_subjects", {
-            _course_slug: profile.course_slug,
-            _year: year,
-          })
-        : { data: null };
-      const canJoin = (allowed ?? []).some(
-        (s: { slug: string }) => s.slug === classroom.subject_slug,
-      );
-      if (!canJoin) throw new Error("This classroom is not on your course.");
-    }
-
-    const subjectName = (classroom.subjects as { name: string } | null)?.name ?? "Classroom";
-    const displayName = profile.name?.trim() || "Student";
-
-    // Room name is derived from the classroom id, never supplied by the client,
-    // so nobody can join a room they were not cleared for by typing an id.
-    const roomName = `classroom-${classroom.id}`;
-
-    const common = {
-      roomName,
-      isModerator,
-      title: `${subjectName} · Room ${classroom.room_number}`,
-      capacity: classroom.capacity,
-      identity: user.id,
-      name: displayName,
-    };
-
-    if (useSfu) {
-      return { mode: "sfu" as const, sfuUrl: sfuUrl!, token: null, url: null, ...common };
-    }
-
-    if (useCloudflare) {
-      // The session is opened separately by cloudflare-realtime.functions.ts,
-      // which re-runs this same authorisation before it talks to Cloudflare.
-      return { mode: "cloudflare" as const, sfuUrl: null, token: null, url: null, ...common };
-    }
-
-    const { AccessToken } = await import("livekit-server-sdk");
-
-    const at = new AccessToken(apiKey!, apiSecret!, {
-      identity: user.id,
-      name: displayName,
-      // Long enough for a full class; LiveKit only checks it when connecting.
-      ttl: "4h",
-    });
-
-    at.addGrant({
-      roomJoin: true,
-      room: roomName,
-      canPublish: true,
-      canSubscribe: true,
-      // Used for raise-hand, which we send as a data message.
-      canPublishData: true,
-      // Only teachers can mute others or remove them.
-      roomAdmin: isModerator,
-    });
+    const { authorizeClassroomAccess } = await import("@/lib/classroom-access");
+    const access = await authorizeClassroomAccess(data.accessToken, data.classId);
 
     return {
-      mode: "livekit" as const,
-      sfuUrl: null,
-      token: await at.toJwt(),
-      url: url!,
-      ...common,
+      isModerator: access.isModerator,
+      title: access.title,
+      capacity: access.capacity,
+      identity: access.userId,
+      name: access.displayName,
     };
   });

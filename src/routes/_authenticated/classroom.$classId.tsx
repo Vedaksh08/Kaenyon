@@ -17,9 +17,7 @@ import {
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { PathwaayMark, PathwaayWordmark } from "@/components/brand";
-import { createClassroomToken } from "@/lib/classroom-video.functions";
-import { useLiveKit } from "@/lib/use-livekit";
-import { usePathwaaySfu } from "@/lib/use-pathwaay-sfu";
+import { authorizeClassroom } from "@/lib/classroom-video.functions";
 import { useCloudflareRealtime } from "@/lib/use-cloudflare-realtime";
 import { DoubtsPanel } from "@/components/doubts-panel";
 import { markPresence, clearPresence } from "@/lib/social";
@@ -37,12 +35,6 @@ export const Route = createFileRoute("/_authenticated/classroom/$classId")({
 });
 
 interface Session {
-  /** Which video backend the server picked. See classroom-video.functions.ts. */
-  mode: "sfu" | "cloudflare" | "livekit";
-  token: string | null;
-  url: string | null;
-  sfuUrl: string | null;
-  roomName: string;
   isModerator: boolean;
   title: string;
   capacity: number;
@@ -61,8 +53,8 @@ function Classroom() {
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [doubtsOpen, setDoubtsOpen] = useState(true);
 
-  // The server decides whether this student may join and signs a token saying
-  // so. Nothing on this page can grant access by itself.
+  // The server decides whether this student may join. Nothing on this page can
+  // grant access by itself — the media session is refused the same way.
   useEffect(() => {
     let cancelled = false;
     void (async () => {
@@ -73,7 +65,7 @@ function Classroom() {
           nav({ to: "/login", replace: true });
           return;
         }
-        const result = await createClassroomToken({ data: { classId, accessToken } });
+        const result = await authorizeClassroom({ data: { classId, accessToken } });
         if (!cancelled) {
           setAccessToken(accessToken);
           setSession(result);
@@ -88,40 +80,15 @@ function Classroom() {
     };
   }, [classId, nav]);
 
-  // Both hooks are called every render because hooks cannot be conditional;
-  // the one that is not in use gets null inputs and stays idle.
-  const usingSfu = session?.mode === "sfu";
-  const usingCloudflare = session?.mode === "cloudflare";
-  const goHome = () => nav({ to: "/home" });
-
-  const livekit = useLiveKit({
-    token: session?.mode === "livekit" ? (session?.token ?? null) : null,
-    url: session?.mode === "livekit" ? (session?.url ?? null) : null,
-    startMuted: !session?.isModerator,
-    onDisconnected: goHome,
-  });
-
-  const sfu = usePathwaaySfu({
-    url: usingSfu ? (session?.sfuUrl ?? null) : null,
-    roomId: usingSfu ? (session?.roomName ?? null) : null,
-    identity: usingSfu ? (session?.identity ?? null) : null,
+  const live = useCloudflareRealtime({
+    classId,
+    accessToken,
+    identity: session?.identity ?? null,
     name: session?.name ?? "Student",
     isModerator: session?.isModerator ?? false,
     startMuted: !session?.isModerator,
-    onDisconnected: goHome,
+    onDisconnected: () => nav({ to: "/home" }),
   });
-
-  const cloudflare = useCloudflareRealtime({
-    classId: usingCloudflare ? classId : null,
-    accessToken: usingCloudflare ? accessToken : null,
-    identity: usingCloudflare ? (session?.identity ?? null) : null,
-    name: session?.name ?? "Student",
-    isModerator: session?.isModerator ?? false,
-    startMuted: !session?.isModerator,
-    onDisconnected: goHome,
-  });
-
-  const live = usingSfu ? sfu : usingCloudflare ? cloudflare : livekit;
 
   const isModerator = session?.isModerator ?? false;
   const total = live.peers.length + 1;

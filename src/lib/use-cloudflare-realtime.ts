@@ -8,6 +8,7 @@ import {
 } from "@/lib/cloudflare-realtime.functions";
 import {
   CAMERA_CONSTRAINTS,
+  CAMERA_ENCODINGS,
   type ClassroomVideo,
   type LiveStatus,
   type Peer,
@@ -47,13 +48,6 @@ interface RemoteMedia {
   mic?: MediaStreamTrack;
   screen?: MediaStreamTrack;
 }
-
-/** Three layers, so the SFU can send each viewer something they can afford. */
-const SEND_ENCODINGS: RTCRtpEncodingParameters[] = [
-  { rid: "f", scaleResolutionDownBy: 1.0 },
-  { rid: "h", scaleResolutionDownBy: 2.0 },
-  { rid: "q", scaleResolutionDownBy: 4.0 },
-];
 
 export function useCloudflareRealtime(opts: {
   classId: string | null;
@@ -274,7 +268,7 @@ export function useCloudflareRealtime(opts: {
       if (camTrack) {
         const t = pc.addTransceiver(camTrack, {
           direction: "sendonly",
-          sendEncodings: SEND_ENCODINGS,
+          sendEncodings: CAMERA_ENCODINGS,
         });
         camSenderRef.current = t.sender;
         transceivers.push({ mid: t.mid, trackName: camName! });

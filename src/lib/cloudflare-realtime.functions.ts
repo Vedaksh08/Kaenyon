@@ -11,7 +11,7 @@ import { z } from "zod";
  *
  * Cloudflare forwards media and nothing else. There is no room, no membership,
  * no participant list. Pathwaay supplies all of that from Supabase Realtime
- * presence, exactly as it does for our own mediasoup SFU.
+ * presence — see use-cloudflare-realtime.ts.
  */
 
 const API_ROOT = "https://rtc.live.cloudflare.com/v1/apps";
@@ -71,7 +71,7 @@ function credentials() {
   const appToken = process.env.CF_REALTIME_APP_TOKEN;
   if (!appId || !appToken) {
     throw new Error(
-      "Cloudflare Realtime is not configured. Set CF_REALTIME_APP_ID and CF_REALTIME_APP_TOKEN — see SFU-DEPLOY.md.",
+      "Cloudflare Realtime is not configured. Set CF_REALTIME_APP_ID and CF_REALTIME_APP_TOKEN — see CLOUDFLARE-SFU.md.",
     );
   }
   return { appId, appToken };
@@ -118,60 +118,18 @@ export const openRealtimeSession = createServerFn({ method: "POST" })
       .parse(data),
   )
   .handler(async ({ data }) => {
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-
-    // Identify the caller from their JWT rather than trusting a body field.
-    const { data: userData, error: userErr } = await supabaseAdmin.auth.getUser(data.accessToken);
-    const user = userData?.user;
-    if (userErr || !user) throw new Error("Not signed in.");
-
-    const { data: profile } = await supabaseAdmin
-      .from("profiles")
-      .select("name, suspended_until, onboarded_at, course_slug, year")
-      .eq("id", user.id)
-      .maybeSingle();
-
-    if (profile?.suspended_until && new Date(profile.suspended_until).getTime() > Date.now()) {
-      throw new Error("Your account is suspended.");
-    }
-    if (!profile?.onboarded_at) throw new Error("Finish setting up your profile first.");
-
-    const { data: classroom } = await supabaseAdmin
-      .from("classrooms")
-      .select("id, subject_slug")
-      .eq("id", data.classId)
-      .maybeSingle();
-    if (!classroom) throw new Error("That classroom does not exist.");
-
-    const [{ data: isAdmin }, { data: isMod }] = await Promise.all([
-      supabaseAdmin.rpc("has_role", { _user_id: user.id, _role: "admin" }),
-      supabaseAdmin.rpc("has_role", { _user_id: user.id, _role: "moderator" }),
-    ]);
-    const isModerator = Boolean(isAdmin || isMod);
-
-    if (!isModerator) {
-      const year = Math.max(1, parseInt(profile.year ?? "1", 10) || 1);
-      const { data: allowed } = profile.course_slug
-        ? await supabaseAdmin.rpc("get_course_subjects", {
-            _course_slug: profile.course_slug,
-            _year: year,
-          })
-        : { data: null };
-      const canJoin = (allowed ?? []).some(
-        (s: { slug: string }) => s.slug === classroom.subject_slug,
-      );
-      if (!canJoin) throw new Error("This classroom is not on your course.");
-    }
+    const { authorizeClassroomAccess } = await import("@/lib/classroom-access");
+    const access = await authorizeClassroomAccess(data.accessToken, data.classId);
 
     const session = (await callCloudflare("/sessions/new", "POST")) as { sessionId: string };
 
     return {
       sessionId: session.sessionId,
       ticket: await signTicket({
-        userId: user.id,
-        classId: classroom.id,
+        userId: access.userId,
+        classId: access.classroomId,
         sessionId: session.sessionId,
-        isModerator,
+        isModerator: access.isModerator,
         // A class runs well under this; the browser rejoins if it lapses.
         exp: Date.now() + 4 * 60 * 60 * 1000,
       }),

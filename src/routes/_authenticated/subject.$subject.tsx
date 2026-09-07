@@ -238,8 +238,7 @@ function SubjectPage() {
                       Room full
                     </button>
                   ) : (
-                    // SFU-backed classroom — LiveKit or our own mediasoup
-                    // server, decided by classroom-video.functions.ts. The
+                    // Classroom video runs on the Cloudflare Realtime SFU. The
                     // peer-to-peer room is still reachable at /room/$roomId;
                     // it could not carry more than a handful of cameras,
                     // which is why this is the way in.

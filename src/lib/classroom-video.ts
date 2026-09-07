@@ -1,10 +1,9 @@
 /**
- * The contract a classroom video backend has to satisfy.
+ * The shape the classroom page renders against.
  *
- * Pathwaay can talk to two SFUs: LiveKit Cloud (`use-livekit.ts`) and our own
- * mediasoup server (`use-pathwaay-sfu.ts`). The classroom page renders against
- * this interface and never learns which one it got, so switching is one env
- * var on the server rather than a rewrite of the page.
+ * Video is Cloudflare Realtime, driven by `use-cloudflare-realtime.ts`. Keeping
+ * the page behind this interface rather than against the hook directly means
+ * the grid, controls and tiles carry no knowledge of the media layer.
  */
 
 export interface Peer {
@@ -45,13 +44,14 @@ export interface ClassroomVideo {
  * Simulcast is what makes the grid survivable. An SFU fixes the upload side —
  * one stream out per browser instead of one per peer — but without simulcast
  * every viewer still downloads 29 full-resolution streams. With three layers
- * the SFU picks a cheap one per viewer, and drops layers by itself when a
- * viewer's downlink is congested.
+ * the SFU sends each viewer a rung they can afford.
+ *
+ * The rid names are Cloudflare's convention: full, half, quarter.
  */
 export const CAMERA_ENCODINGS: RTCRtpEncodingParameters[] = [
-  { rid: "r0", maxBitrate: 120_000, scaleResolutionDownBy: 4 },
-  { rid: "r1", maxBitrate: 350_000, scaleResolutionDownBy: 2 },
-  { rid: "r2", maxBitrate: 900_000, scaleResolutionDownBy: 1 },
+  { rid: "f", scaleResolutionDownBy: 1, maxBitrate: 900_000 },
+  { rid: "h", scaleResolutionDownBy: 2, maxBitrate: 350_000 },
+  { rid: "q", scaleResolutionDownBy: 4, maxBitrate: 120_000 },
 ];
 
 /** Modest capture settings; 30 tiles are small on screen anyway. */
