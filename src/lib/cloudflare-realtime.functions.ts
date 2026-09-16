@@ -1,207 +1,27 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
-/**
- * Server-side proxy for the Cloudflare Realtime SFU.
- *
- * Cloudflare's API is authenticated with an app token that carries no notion of
- * rooms or users: anyone holding it can create sessions and pull any track in
- * the app. So it never reaches the browser — every call goes through here, and
- * the page only ever sees session ids and SDP.
- *
- * Cloudflare forwards media and nothing else. There is no room, no membership,
- * no participant list. Pathwaay supplies all of that from Supabase Realtime
- * presence — see use-cloudflare-realtime.ts.
- */
-
 const API_ROOT = "https://rtc.live.cloudflare.com/v1/apps";
-
-/**
- * A signed note saying "this user was cleared for this classroom and owns this
- * Cloudflare session".
- *
- * Publishing a class involves a dozen or so calls per student, and re-running
- * the whole Supabase authorisation on each would add a round trip every time
- * somebody's camera appears. The check runs once, when the session is created,
- * and the result is signed so later calls can be verified locally.
- */
-function ticketSecret(): string {
-  const secret = process.env.CLASSROOM_TICKET_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!secret) throw new Error("No server secret available to sign classroom tickets.");
-  return secret;
-}
-
-interface Ticket {
-  userId: string;
-  classId: string;
-  sessionId: string;
-  isModerator: boolean;
-  /** Epoch ms. */
-  exp: number;
-}
-
-async function signTicket(payload: Ticket): Promise<string> {
-  const { createHmac } = await import("node:crypto");
-  const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
-  const mac = createHmac("sha256", ticketSecret()).update(body).digest("base64url");
-  return `${body}.${mac}`;
-}
-
-async function readTicket(ticket: string): Promise<Ticket> {
-  const { createHmac, timingSafeEqual } = await import("node:crypto");
-  const [body, mac] = ticket.split(".");
-  if (!body || !mac) throw new Error("Malformed classroom ticket.");
-
-  const expected = createHmac("sha256", ticketSecret()).update(body).digest("base64url");
-  const a = Buffer.from(mac);
-  const b = Buffer.from(expected);
-  // Constant-time, and length-checked first because timingSafeEqual throws on
-  // a length mismatch rather than returning false.
-  if (a.length !== b.length || !timingSafeEqual(a, b)) {
-    throw new Error("Invalid classroom ticket.");
-  }
-
-  const payload = JSON.parse(Buffer.from(body, "base64url").toString()) as Ticket;
-  if (payload.exp < Date.now()) throw new Error("Your classroom session expired. Rejoin.");
-  return payload;
-}
-
+type Ticket = { userId:string; classId:string; sessionId:string; leaseId:string; exp:number };
 function credentials() {
-  const appId = process.env.CF_REALTIME_APP_ID;
-  const appToken = process.env.CF_REALTIME_APP_TOKEN;
-  if (!appId || !appToken) {
-    throw new Error(
-      "Cloudflare Realtime is not configured. Set CF_REALTIME_APP_ID and CF_REALTIME_APP_TOKEN — see CLOUDFLARE-SFU.md.",
-    );
-  }
-  return { appId, appToken };
+  const appId=process.env.CF_REALTIME_APP_ID, appToken=process.env.CF_REALTIME_APP_TOKEN;
+  if (!appId || !appToken) throw new Error("Classroom video is unavailable because Cloudflare Realtime is not configured on the server. Set CF_REALTIME_APP_ID and CF_REALTIME_APP_TOKEN.");
+  return {appId,appToken};
 }
-
-async function callCloudflare(path: string, method: "POST" | "PUT", body?: unknown) {
-  const { appId, appToken } = credentials();
-  const res = await fetch(`${API_ROOT}/${appId}${path}`, {
-    method,
-    headers: {
-      Authorization: `Bearer ${appToken}`,
-      "Content-Type": "application/json",
-    },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
-
-  const json = (await res.json()) as { errorCode?: string; errorDescription?: string };
-  if (!res.ok || json.errorCode) {
-    throw new Error(json.errorDescription || `Cloudflare Realtime returned ${res.status}.`);
-  }
-  return json;
-}
-
-/** A track as the browser describes it to us. */
-const trackSchema = z.object({
-  location: z.enum(["local", "remote"]),
-  mid: z.string().optional(),
-  trackName: z.string(),
-  sessionId: z.string().optional(),
-  simulcast: z.object({ preferredRid: z.string() }).optional(),
+function secret() { const s=process.env.CLASSROOM_TICKET_SECRET||process.env.SUPABASE_SERVICE_ROLE_KEY; if(!s) throw new Error("Classroom video server configuration is incomplete."); return s; }
+async function sign(payload:Ticket) { const {createHmac}=await import("node:crypto"); const body=Buffer.from(JSON.stringify(payload)).toString("base64url"); return body+"."+createHmac("sha256",secret()).update(body).digest("base64url"); }
+async function read(ticket:string):Promise<Ticket> { const {createHmac,timingSafeEqual}=await import("node:crypto"); const [body,mac]=ticket.split("."); if(!body||!mac) throw new Error("Invalid classroom session."); const expected=createHmac("sha256",secret()).update(body).digest("base64url"); if(Buffer.byteLength(mac)!==Buffer.byteLength(expected)||!timingSafeEqual(Buffer.from(mac),Buffer.from(expected))) throw new Error("Invalid classroom session."); const value=JSON.parse(Buffer.from(body,"base64url").toString()) as Ticket; if(value.exp<Date.now()) throw new Error("Your classroom session expired. Rejoin."); return value; }
+async function cf(path:string,method:"POST"|"PUT",body?:unknown) { const {appId,appToken}=credentials(); const res=await fetch(`${API_ROOT}/${appId}${path}`,{method,headers:{Authorization:`Bearer ${appToken}`,"Content-Type":"application/json"},body:body===undefined?undefined:JSON.stringify(body)}); const json=await res.json() as {errorCode?:string;errorDescription?:string}; if(!res.ok||json.errorCode) throw new Error(json.errorDescription||"Could not connect classroom video."); return json; }
+async function lease(ticket:Ticket,cameraOn:boolean) { const {supabaseAdmin}=await import("@/integrations/supabase/client.server"); const admin=supabaseAdmin as unknown as {rpc:(name:string,args:Record<string,unknown>)=>Promise<{data:Array<{status:string;warning_count:number}>|null;error:{message:string}|null}>}; const {data,error}=await admin.rpc("heartbeat_classroom_video",{p_classroom_id:ticket.classId,p_user_id:ticket.userId,p_session_id:ticket.leaseId,p_camera_on:cameraOn}); if(error) throw new Error(error.message); return data?.[0]??{status:"left",warning_count:0}; }
+const track=z.object({location:z.enum(["local","remote"]),mid:z.string().optional(),trackName:z.string(),sessionId:z.string().optional(),simulcast:z.object({preferredRid:z.string()}).optional()});
+export const openRealtimeSession=createServerFn({method:"POST"}).inputValidator(d=>z.object({classId:z.string().uuid(),accessToken:z.string().min(10)}).parse(d)).handler(async({data})=>{
+  const {authorizeClassroomAccess}=await import("@/lib/classroom-access"); const access=await authorizeClassroomAccess(data.accessToken,data.classId);
+  const {randomUUID}=await import("node:crypto"); const leaseId=randomUUID(); const {supabaseAdmin}=await import("@/integrations/supabase/client.server"); const admin=supabaseAdmin as unknown as {rpc:(name:string,args:Record<string,unknown>)=>Promise<{error:{message:string}|null}>};
+  const claimed=await admin.rpc("claim_classroom_video_seat",{p_classroom_id:access.classroomId,p_user_id:access.userId,p_session_id:leaseId}); if(claimed.error) throw new Error(claimed.error.message);
+  try { const session=await cf("/sessions/new","POST") as {sessionId:string}; return {sessionId:session.sessionId,ticket:await sign({userId:access.userId,classId:access.classroomId,sessionId:session.sessionId,leaseId,exp:Date.now()+4*60*60*1000})}; } catch(e) { await admin.rpc("leave_classroom_video",{p_classroom_id:access.classroomId,p_user_id:access.userId,p_session_id:leaseId}); throw e; }
 });
-
-/**
- * Opens a Cloudflare session for one student, after checking they belong in
- * this classroom. This is the only entry point that touches Supabase.
- */
-export const openRealtimeSession = createServerFn({ method: "POST" })
-  .inputValidator((data) =>
-    z
-      .object({
-        classId: z.string().uuid(),
-        accessToken: z.string().min(10),
-      })
-      .parse(data),
-  )
-  .handler(async ({ data }) => {
-    const { authorizeClassroomAccess } = await import("@/lib/classroom-access");
-    const access = await authorizeClassroomAccess(data.accessToken, data.classId);
-
-    const session = (await callCloudflare("/sessions/new", "POST")) as { sessionId: string };
-
-    return {
-      sessionId: session.sessionId,
-      ticket: await signTicket({
-        userId: access.userId,
-        classId: access.classroomId,
-        sessionId: session.sessionId,
-        isModerator: access.isModerator,
-        // A class runs well under this; the browser rejoins if it lapses.
-        exp: Date.now() + 4 * 60 * 60 * 1000,
-      }),
-    };
-  });
-
-/**
- * Publishes this student's own tracks. The browser has already built the offer;
- * Cloudflare answers it.
- */
-export const pushRealtimeTracks = createServerFn({ method: "POST" })
-  .inputValidator((data) =>
-    z
-      .object({
-        ticket: z.string().min(10),
-        sdp: z.string().min(1),
-        tracks: z.array(trackSchema).min(1).max(8),
-      })
-      .parse(data),
-  )
-  .handler(async ({ data }) => {
-    const ticket = await readTicket(data.ticket);
-    return (await callCloudflare(`/sessions/${ticket.sessionId}/tracks/new`, "POST", {
-      sessionDescription: { sdp: data.sdp, type: "offer" },
-      tracks: data.tracks,
-    })) as {
-      sessionDescription: { sdp: string; type: string };
-      tracks: Array<{ mid?: string; trackName: string; errorCode?: string }>;
-    };
-  });
-
-/**
- * Subscribes to other students' tracks. Cloudflare replies with an offer, which
- * is why pulling always needs a renegotiation afterwards.
- */
-export const pullRealtimeTracks = createServerFn({ method: "POST" })
-  .inputValidator((data) =>
-    z
-      .object({
-        ticket: z.string().min(10),
-        // One call carries every new track, so a 30-person room does not turn
-        // into 30 sequential renegotiations.
-        tracks: z.array(trackSchema).min(1).max(64),
-      })
-      .parse(data),
-  )
-  .handler(async ({ data }) => {
-    const ticket = await readTicket(data.ticket);
-    return (await callCloudflare(`/sessions/${ticket.sessionId}/tracks/new`, "POST", {
-      tracks: data.tracks,
-    })) as {
-      requiresImmediateRenegotiation?: boolean;
-      sessionDescription?: { sdp: string; type: string };
-      tracks: Array<{
-        mid?: string;
-        trackName: string;
-        sessionId?: string;
-        errorCode?: string;
-        errorDescription?: string;
-      }>;
-    };
-  });
-
-/** Completes the handshake Cloudflare starts when tracks are pulled. */
-export const renegotiateRealtime = createServerFn({ method: "POST" })
-  .inputValidator((data) =>
-    z.object({ ticket: z.string().min(10), sdp: z.string().min(1) }).parse(data),
-  )
-  .handler(async ({ data }) => {
-    const ticket = await readTicket(data.ticket);
-    await callCloudflare(`/sessions/${ticket.sessionId}/renegotiate`, "PUT", {
-      sessionDescription: { sdp: data.sdp, type: "answer" },
-    });
-    return { ok: true };
-  });
+export const pushRealtimeTracks=createServerFn({method:"POST"}).inputValidator(d=>z.object({ticket:z.string().min(10),sdp:z.string().min(1),tracks:z.array(track).min(1).max(2)}).parse(d)).handler(async({data})=>{const t=await read(data.ticket); return cf(`/sessions/${t.sessionId}/tracks/new`,"POST",{sessionDescription:{sdp:data.sdp,type:"offer"},tracks:data.tracks});});
+export const pullRealtimeTracks=createServerFn({method:"POST"}).inputValidator(d=>z.object({ticket:z.string().min(10),tracks:z.array(track).min(1).max(30)}).parse(d)).handler(async({data})=>{const t=await read(data.ticket); return cf(`/sessions/${t.sessionId}/tracks/new`,"POST",{tracks:data.tracks});});
+export const renegotiateRealtime=createServerFn({method:"POST"}).inputValidator(d=>z.object({ticket:z.string().min(10),sdp:z.string().min(1)}).parse(d)).handler(async({data})=>{const t=await read(data.ticket); await cf(`/sessions/${t.sessionId}/renegotiate`,"PUT",{sessionDescription:{sdp:data.sdp,type:"answer"}}); return {ok:true};});
+export const heartbeatClassroomVideo=createServerFn({method:"POST"}).inputValidator(d=>z.object({ticket:z.string().min(10),cameraOn:z.boolean()}).parse(d)).handler(async({data})=>lease(await read(data.ticket),data.cameraOn));
+export const leaveClassroomVideo=createServerFn({method:"POST"}).inputValidator(d=>z.object({ticket:z.string().min(10)}).parse(d)).handler(async({data})=>{const t=await read(data.ticket); const {supabaseAdmin}=await import("@/integrations/supabase/client.server"); const admin=supabaseAdmin as unknown as {rpc:(name:string,args:Record<string,unknown>)=>Promise<unknown>}; await admin.rpc("leave_classroom_video",{p_classroom_id:t.classId,p_user_id:t.userId,p_session_id:t.leaseId}); return {ok:true};});
